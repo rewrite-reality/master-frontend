@@ -4,7 +4,7 @@
 	"private": true,
 	"scripts": {
 		"dev": "next dev",
-		"dev:https": "next dev -p 3020 --experimental-https",
+		"dev:https": "next dev --experimental-https",
 		"build": "next build",
 		"start": "next start",
 		"lint": "next lint"
@@ -15,6 +15,7 @@
 		"@tma.js/sdk-react": "^3.0.11",
 		"@tonconnect/ui-react": "^2.3.1",
 		"axios": "^1.13.2",
+		"clsx": "^2.1.1",
 		"daisyui": "^5.5.14",
 		"eruda": "^3.4.3",
 		"next": "16.0.7",
