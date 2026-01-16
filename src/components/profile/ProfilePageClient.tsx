@@ -1,30 +1,11 @@
-// src/components/profile/ProfilePageClient.tsx
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, ApiError } from '@/lib/apiClient';
-import { ProfileSkeleton } from './ProfileSkeleton'; // Импорт
-
-type Named = { id: string; name: string };
-
-type ProfileDto = {
-	id: string;
-	firstName: string | null;
-	lastName: string | null;
-	patronymic: string | null;
-	phone: string | null; // +79001234567
-	status: string | null;
-	districts: Named[];
-	specialties: Named[];
-};
-
-type MeResponse = {
-	id: string;
-	role: string;
-	telegramUsername: string | null;
-	profile: ProfileDto | null;
-};
+import { ApiError } from '@/lib/apiClient';
+import { calcNeedsSetup, useMeQuery } from '@/components/auth/meQuery';
+import { ProfileSkeleton } from './ProfileSkeleton';
+import { TopProgressBar } from '../ui/TopProgressBar';
 
 function initials(first?: string | null, last?: string | null) {
 	const a = (first?.trim()?.[0] ?? '').toUpperCase();
@@ -45,9 +26,8 @@ function formatPhonePretty(e164?: string | null) {
 export default function ProfilePageClient() {
 	const router = useRouter();
 
-	const [me, setMe] = useState<MeResponse | null>(null);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
+	const { data: me, isLoading, isFetching, error } = useMeQuery();
+
 	const [toast, setToast] = useState<string | null>(null);
 
 	const showToast = useCallback((msg: string) => {
@@ -55,66 +35,52 @@ export default function ProfilePageClient() {
 		window.setTimeout(() => setToast(null), 2000);
 	}, []);
 
+	const needsSetup = useMemo(() => (me ? calcNeedsSetup(me) : false), [me]);
+
 	useEffect(() => {
-		let cancelled = false;
-
-		(async () => {
-			try {
-				setLoading(true);
-				setError(null);
-
-				const data = await api<MeResponse>('/users/me', { method: 'GET' });
-				if (cancelled) return;
-
-				setMe(data);
-
-				// Redirect to setup only if profile is missing or key fields empty
-				const p = data.profile;
-				const needsSetup =
-					!p ||
-					!p.firstName?.trim() ||
-					!p.lastName?.trim() ||
-					!p.phone?.trim(); // patronymic optional here
-
-				if (needsSetup) {
-					router.replace('/profile/setup');
-				}
-				// ProfilePageClient.tsx
-
-				// ...
-			} catch (e) {
-				if (cancelled) return;
-
-				if (e instanceof ApiError && e.status === 401) {
-					// Не делаем return! Просто запускаем навигацию.
-					router.replace('/');
-				} else {
-					// Показываем ошибку только если это НЕ 401
-					if (e instanceof ApiError) setError(e.message || `Ошибка ${e.status}`);
-					else setError(e instanceof Error ? e.message : 'Ошибка загрузки профиля');
-				}
-
-			} finally {
-				// Всегда убираем загрузку, даже если уходим со страницы
-				if (!cancelled) setLoading(false);
-			}
-
-		})();
-
-		return () => {
-			cancelled = true;
-		};
-	}, [router]);
-
+		if (me && needsSetup) {
+			router.replace('/profile/setup');
+		}
+	}, [me, needsSetup, router]);
 
 	const profile = me?.profile ?? null;
+
+	if (!me && isLoading) {
+		return <ProfileSkeleton />;
+	}
+
+	if (error) {
+		const message =
+			error instanceof ApiError ? error.message : error instanceof Error ? error.message : 'Failed to load profile';
+
+		return (
+			<div className="min-h-dvh p-4 flex items-center justify-center">
+				<div className="card bg-base-100 shadow border border-base-200 w-full max-w-md">
+					<div className="card-body gap-3">
+						<h2 className="card-title">Error</h2>
+						<p className="opacity-70 text-sm">{message}</p>
+						<div className="card-actions">
+							<button className="btn btn-primary w-full" onClick={() => window.location.reload()}>
+								Reload
+							</button>
+						</div>
+					</div>
+				</div>
+			</div>
+		);
+	}
+
+	// Redirecting to setup: avoid rendering empty profile
+	if (!me || needsSetup) {
+		return <TopProgressBar className="fixed left-0 right-0 top-0 z-40" />;
+	}
 
 	const fullName = useMemo(() => {
 		const ln = profile?.lastName?.trim() ?? '';
 		const fn = profile?.firstName?.trim() ?? '';
 		const pt = profile?.patronymic?.trim() ?? '';
 		const name = [ln, fn, pt].filter(Boolean).join(' ');
-		return name || 'Профиль';
+		return name || 'Мастер';
 	}, [profile]);
 
 	const isAvailable = useMemo(() => {
@@ -142,7 +108,7 @@ export default function ProfilePageClient() {
 
 		try {
 			await navigator.clipboard.writeText(text);
-			showToast('Номер скопирован');
+			showToast('Скопировано');
 			if (navigator.vibrate) navigator.vibrate(50);
 		} catch {
 			const ta = document.createElement('textarea');
@@ -151,43 +117,18 @@ export default function ProfilePageClient() {
 			ta.select();
 			document.execCommand('copy');
 			ta.remove();
-			showToast('Номер скопирован');
+			showToast('Скопировано');
 			if (navigator.vibrate) navigator.vibrate(50);
 		}
 	}, [phoneE164, phonePretty, showToast]);
-
-	const handleMainAction = useCallback(() => {
-		showToast('Скоро: назначение на заказ');
-	}, [showToast]);
-
-	// ВМЕСТО СПИННЕРА
-	if (loading) {
-		return <ProfileSkeleton />;
-	}
-
-	if (error) {
-		return (
-			<div className="min-h-dvh p-4 flex items-center justify-center">
-				<div className="card bg-base-100 shadow border border-base-200 w-full max-w-md">
-					<div className="card-body gap-3">
-						<h2 className="card-title">Ошибка</h2>
-						<p className="opacity-70 text-sm">{error}</p>
-						<div className="card-actions">
-							<button className="btn btn-primary w-full" onClick={() => window.location.reload()}>
-								Обновить
-							</button>
-						</div>
-					</div>
-				</div>
-			</div>
-		);
-	}
 
 	const specialties = profile?.specialties ?? [];
 	const districts = profile?.districts ?? [];
 
 	return (
 		<div className="min-h-dvh bg-base-200">
+			{isFetching && <TopProgressBar className="fixed left-0 right-0 top-0 z-40" />}
+
 			{/* Header */}
 			<div className="px-4 pt-3">
 				<button className="btn btn-ghost btn-sm gap-2" onClick={handleBack}>
@@ -215,7 +156,7 @@ export default function ProfilePageClient() {
 								'absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-base-100',
 								blocked ? 'bg-error' : isAvailable ? 'bg-success' : 'bg-neutral',
 							].join(' ')}
-							title={blocked ? 'Заблокирован' : isAvailable ? 'Доступен' : 'Недоступен'}
+							title={blocked ? 'Заблокирован' : isAvailable ? 'Онлайн' : 'Офлайн'}
 						/>
 					</div>
 
@@ -250,21 +191,21 @@ export default function ProfilePageClient() {
 					<div className="card bg-base-100 shadow-sm border border-base-200">
 						<div className="card-body items-center py-4 px-2">
 							<div className="text-xl font-bold">—</div>
-							<div className="text-[11px] uppercase tracking-wide opacity-60">Заказов</div>
+							<div className="text-[11px] uppercase tracking-wide opacity-60">Заказы</div>
 						</div>
 					</div>
 
 					<div className="card bg-base-100 shadow-sm border border-base-200">
 						<div className="card-body items-center py-4 px-2">
 							<div className="text-xl font-bold">4.9</div>
-							<div className="text-[11px] uppercase tracking-wide opacity-60">Рейтинг</div>
+							<div className="text-[11px] uppercase tracking-wide opacity-60">Оценка</div>
 						</div>
 					</div>
 
 					<div className="card bg-base-100 shadow-sm border border-base-200">
 						<div className="card-body items-center py-4 px-2">
 							<div className="text-xl font-bold">—</div>
-							<div className="text-[11px] uppercase tracking-wide opacity-60">Опыт</div>
+							<div className="text-[11px] uppercase tracking-wide opacity-60">Баланс</div>
 						</div>
 					</div>
 				</div>
@@ -276,7 +217,7 @@ export default function ProfilePageClient() {
 					<div className="card-body gap-5">
 						{/* Specialties */}
 						<div className="space-y-2">
-							<h2 className="text-base font-semibold">Специализация</h2>
+							<h2 className="text-base font-semibold">Специализации</h2>
 							<div className="flex flex-wrap gap-2">
 								{specialties.length > 0 ? (
 									specialties.map((s) => (
@@ -285,7 +226,7 @@ export default function ProfilePageClient() {
 										</span>
 									))
 								) : (
-									<span className="text-sm opacity-60">Не указано</span>
+									<span className="text-sm opacity-60">Не указаны</span>
 								)}
 							</div>
 						</div>
@@ -316,7 +257,7 @@ export default function ProfilePageClient() {
 							<div className="flex items-start justify-between py-1 gap-3">
 								<span className="text-sm shrink-0">Районы</span>
 								<span className="text-sm opacity-70 text-right">
-									{districts.length ? districts.map((d) => d.name).join(', ') : 'Не указано'}
+									{districts.length ? districts.map((d) => d.name).join(', ') : 'Не указаны'}
 								</span>
 							</div>
 						</div>
@@ -328,7 +269,7 @@ export default function ProfilePageClient() {
 			<div className="fixed inset-x-0 bottom-0 z-50">
 				<div className="bg-gradient-to-t from-base-200 via-base-200/80 to-base-200/0 px-4 pt-6 pb-[max(16px,env(safe-area-inset-bottom))]">
 					<button className="btn btn-primary w-full h-12 rounded-2xl shadow-lg" onClick={handleMainAction} disabled={blocked}>
-						Назначить на заказ
+						Готов принять заказ
 					</button>
 				</div>
 			</div> */}

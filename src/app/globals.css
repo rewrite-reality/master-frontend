@@ -4,5 +4,16 @@
 /* app/globals.css */
 body {
 	background-color: oklch(var(--b2));
-	/* Цвет base-200 в DaisyUI */
+}
+
+@keyframes app-progress {
+	0% {
+		transform: translateX(-100%);
+	}
+	50% {
+		transform: translateX(60%);
+	}
+	100% {
+		transform: translateX(200%);
+	}
 }

@@ -1,10 +1,11 @@
-// src/components/orders/OrdersPageClient.tsx
 'use client';
 
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { ApiError } from '@/lib/apiClient';
 import { getAvailableOrders, type OrderDto } from '@/lib/ordersApi';
+import { TopProgressBar } from '../ui/TopProgressBar';
 
 function formatMoney(n?: number | null) {
 	if (n == null) return '—';
@@ -12,13 +13,13 @@ function formatMoney(n?: number | null) {
 }
 
 function formatWhen(iso?: string | null) {
-	if (!iso) return 'По времени: не указано';
+	if (!iso) return 'Без даты и времени';
 	const d = new Date(iso);
 	return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 function OrderCard({ o }: { o: OrderDto }) {
-	const district = o.district?.name ?? 'Район не указан';
+	const district = o.district?.name ?? 'Без района';
 	const specialty = o.specialty?.name ?? 'Без специальности';
 
 	return (
@@ -39,7 +40,7 @@ function OrderCard({ o }: { o: OrderDto }) {
 
 					<div className="flex items-center justify-between">
 						<span className="text-xs opacity-70">{formatWhen(o.scheduledAt)}</span>
-						<span className="badge badge-ghost">PENDING</span>
+						<span className="badge badge-ghost">{o.status}</span>
 					</div>
 				</div>
 			</div>
@@ -48,42 +49,37 @@ function OrderCard({ o }: { o: OrderDto }) {
 }
 
 export default function OrdersPageClient() {
-	const [items, setItems] = useState<OrderDto[]>([]);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
-
 	const [search, setSearch] = useState('');
 	const [urgentOnly, setUrgentOnly] = useState(false);
 
 	const query = useMemo(() => ({ search: search.trim() || undefined, urgentOnly, limit: 50 }), [search, urgentOnly]);
 
-	useEffect(() => {
-		let cancelled = false;
+	const { data, isLoading, isFetching, error, refetch } = useQuery({
+		queryKey: ['orders', query],
+		queryFn: () => getAvailableOrders(query),
+		staleTime: 30 * 1000,
+		gcTime: 5 * 60 * 1000,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
+		placeholderData: (previousData) => previousData,
+	});
 
-		(async () => {
-			try {
-				setLoading(true);
-				setError(null);
-				const list = await getAvailableOrders(query);
-				if (!cancelled) setItems(Array.isArray(list) ? list : []);
-			} catch (e) {
-				if (cancelled) return;
-				setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Ошибка загрузки заказов');
-			} finally {
-				if (!cancelled) setLoading(false);
-			}
-		})();
-
-		return () => {
-			cancelled = true;
-		};
-	}, [query]);
+	const items = data ?? [];
+	const errorMessage = error
+		? error instanceof ApiError
+			? error.message
+			: error instanceof Error
+				? error.message
+				: 'Не удалось загрузить заявки'
+		: null;
 
 	return (
 		<div className="p-4 space-y-4">
+			{isFetching && <TopProgressBar className="fixed left-0 right-0 top-0 z-40" />}
+
 			<div className="flex items-center justify-between gap-3">
-				<h1 className="text-xl font-bold">Заказы</h1>
-				<button className="btn btn-sm" onClick={() => window.location.reload()}>
+				<h1 className="text-xl font-bold">Заявки</h1>
+				<button className="btn btn-sm" onClick={() => refetch()}>
 					Обновить
 				</button>
 			</div>
@@ -92,7 +88,7 @@ export default function OrdersPageClient() {
 				<div className="card-body p-4 gap-3">
 					<input
 						className="input input-bordered w-full"
-						placeholder="Поиск (заголовок, адрес, описание)…"
+						placeholder="Поиск (адрес, заказ, клиент)…"
 						value={search}
 						onChange={(e) => setSearch(e.target.value)}
 					/>
@@ -104,27 +100,27 @@ export default function OrdersPageClient() {
 							checked={urgentOnly}
 							onChange={(e) => setUrgentOnly(e.target.checked)}
 						/>
-						<span className="label-text">Срочные (в ближайшие 2 часа)</span>
+						<span className="label-text">Только срочные (до 2 часов)</span>
 					</label>
 				</div>
 			</div>
 
-			{error && (
+			{errorMessage && (
 				<div className="alert alert-error">
-					<span>{error}</span>
+					<span>{errorMessage}</span>
 				</div>
 			)}
 
-			{loading ? (
+			{isLoading && items.length === 0 ? (
 				<div className="flex items-center gap-3 opacity-80">
 					<span className="loading loading-spinner loading-md" />
-					<span>Загружаем заказы…</span>
+					<span>Загружаем заявки…</span>
 				</div>
 			) : items.length === 0 ? (
 				<div className="card bg-base-100 border border-base-200">
 					<div className="card-body">
-						<h2 className="font-semibold">Нет доступных заказов</h2>
-						<p className="text-sm opacity-70">Попробуй снять фильтры или зайти позже.</p>
+						<h2 className="font-semibold">Нет подходящих заявок</h2>
+						<p className="text-sm opacity-70">Попробуйте изменить фильтры или загляните позже.</p>
 					</div>
 				</div>
 			) : (

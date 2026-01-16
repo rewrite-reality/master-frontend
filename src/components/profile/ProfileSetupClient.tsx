@@ -1,9 +1,11 @@
 'use client';
 
 import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { InputMask } from '@react-input/mask';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/apiClient';
+import { calcNeedsSetup, emitNeedsSetup, meQueryKey, type MeResponse } from '@/components/auth/meQuery';
 
 type Item = { id: number; name: string };
 
@@ -23,6 +25,7 @@ function toE164Ru(input: string): string {
 
 export default function ProfileSetupClient() {
 	const router = useRouter();
+	const queryClient = useQueryClient();
 
 	const [lastName, setLastName] = useState('');
 	const [firstName, setFirstName] = useState('');
@@ -98,6 +101,11 @@ export default function ProfileSetupClient() {
 					specialtyIds,
 				}),
 			});
+
+			// refresh me cache to unblock AuthGate redirects
+			const updatedMe = await api<MeResponse>('/users/me', { method: 'GET' });
+			queryClient.setQueryData(meQueryKey, updatedMe);
+			emitNeedsSetup(calcNeedsSetup(updatedMe));
 
 			router.replace('/profile');
 		} catch (e) {
