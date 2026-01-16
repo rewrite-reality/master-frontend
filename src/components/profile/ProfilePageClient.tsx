@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/apiClient';
+import { ProfileSkeleton } from './ProfileSkeleton'; // Импорт
 
 type Named = { id: string; name: string };
 
@@ -78,19 +79,33 @@ export default function ProfilePageClient() {
 				if (needsSetup) {
 					router.replace('/profile/setup');
 				}
+				// ProfilePageClient.tsx
+
+				// ...
 			} catch (e) {
 				if (cancelled) return;
-				if (e instanceof ApiError) setError(e.message || `Ошибка ${e.status}`);
-				else setError(e instanceof Error ? e.message : 'Ошибка загрузки профиля');
+
+				if (e instanceof ApiError && e.status === 401) {
+					// Не делаем return! Просто запускаем навигацию.
+					router.replace('/');
+				} else {
+					// Показываем ошибку только если это НЕ 401
+					if (e instanceof ApiError) setError(e.message || `Ошибка ${e.status}`);
+					else setError(e instanceof Error ? e.message : 'Ошибка загрузки профиля');
+				}
+
 			} finally {
+				// Всегда убираем загрузку, даже если уходим со страницы
 				if (!cancelled) setLoading(false);
 			}
+
 		})();
 
 		return () => {
 			cancelled = true;
 		};
 	}, [router]);
+
 
 	const profile = me?.profile ?? null;
 
@@ -145,15 +160,9 @@ export default function ProfilePageClient() {
 		showToast('Скоро: назначение на заказ');
 	}, [showToast]);
 
+	// ВМЕСТО СПИННЕРА
 	if (loading) {
-		return (
-			<div className="min-h-dvh p-4 flex items-center justify-center">
-				<div className="flex items-center gap-3 opacity-80">
-					<span className="loading loading-spinner loading-md" />
-					<span>Загрузка профиля…</span>
-				</div>
-			</div>
-		);
+		return <ProfileSkeleton />;
 	}
 
 	if (error) {

@@ -1,5 +1,6 @@
-import SplashWrapper from '@/components/auth/SplashWrapper';
+// app/page.tsx
+import { redirect } from 'next/navigation';
 
-export default function Page() {
-	return <SplashWrapper />;
+export default function Home() {
+	redirect('/profile'); // или '/orders'
 }

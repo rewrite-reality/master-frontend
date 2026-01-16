@@ -43,7 +43,7 @@ export async function api<T>(
 	}
 
 	// json by default when body exists
-	if (init.body && !headers.has('Content-Type')) {
+	if (init.body && !headers.has('Content-Type') && !(init.body instanceof FormData)) {
 		headers.set('Content-Type', 'application/json');
 	}
 	if (!headers.has('Accept')) headers.set('Accept', 'application/json');
@@ -54,21 +54,41 @@ export async function api<T>(
 		if (token) headers.set('Authorization', `Bearer ${token}`);
 	}
 
-	const res = await fetch(url, {
-		...init,
-		headers,
-	});
+	try {
+		const res = await fetch(url, {
+			...init,
+			headers,
+		});
 
-	const payload = await parseBody(res);
+		const payload = await parseBody(res);
 
-	if (!res.ok) {
-		const msg =
-			(payload && typeof payload === 'object' && (payload.message || payload.error)) ||
-			(typeof payload === 'string' ? payload : null) ||
-			`HTTP ${res.status}`;
+		if (!res.ok) {
+			// ✅ АВТОМАТИЧЕСКАЯ ОБРАБОТКА 401
+			if (res.status === 401) {
+				// Если сервер сказал "не знаю такого" (удален) или "токен протух"
+				// 1. Чистим токен, так как он бесполезен
+				tokenStorage.clear();
 
-		throw new ApiError(res.status, msg, payload);
+				// 2. Если мы НЕ на странице логина (Splash), можно редиректить
+				// Проверяем, что код выполняется в браузере
+				if (typeof window !== 'undefined') {
+					// Опционально: если мы глубоко в приложении, лучше перезагрузить страницу
+					// чтобы запустился SplashClient и сделал новый логин через initData
+					// window.location.href = '/'; 
+				}
+			}
+
+			const msg =
+				(payload && typeof payload === 'object' && (payload.message || payload.error)) ||
+				(typeof payload === 'string' ? payload : null) ||
+				`HTTP ${res.status}`;
+
+			throw new ApiError(res.status, msg, payload);
+		}
+
+		return payload as T;
+	} catch (error) {
+		// Пробрасываем ошибку дальше, чтобы компонент мог показать уведомление (например, "Вы заблокированы")
+		throw error;
 	}
-
-	return payload as T;
 }
