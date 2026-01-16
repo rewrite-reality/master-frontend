@@ -12,15 +12,11 @@ type Item = { id: number; name: string };
 function toE164Ru(input: string): string {
 	const digits = input.replace(/\D/g, '');
 	if (!digits) return '';
-
 	let d = digits;
-
-	// allow: 10 digits (without country), 11 digits (7/8 + number)
 	if (d.length === 10) d = '7' + d;
 	if (d.length === 11 && d.startsWith('8')) d = '7' + d.slice(1);
-
 	if (d.length !== 11 || !d.startsWith('7')) return '';
-	return `+${d}`; // +79001234567
+	return `+${d}`;
 }
 
 export default function ProfileSetupClient() {
@@ -41,19 +37,18 @@ export default function ProfileSetupClient() {
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
+	// --- Data Loading ---
+
 	useEffect(() => {
 		let cancelled = false;
-
 		(async () => {
 			try {
 				setLoading(true);
 				setError(null);
-
 				const [d, s] = await Promise.all([
 					api<Item[]>('/districts', { method: 'GET', auth: false as any }),
 					api<Item[]>('/specialties', { method: 'GET', auth: false as any }),
 				]);
-
 				if (cancelled) return;
 				setDistricts(Array.isArray(d) ? d : []);
 				setSpecialties(Array.isArray(s) ? s : []);
@@ -64,18 +59,17 @@ export default function ProfileSetupClient() {
 				if (!cancelled) setLoading(false);
 			}
 		})();
-
-		return () => {
-			cancelled = true;
-		};
+		return () => { cancelled = true; };
 	}, []);
+
+	// --- Logic ---
 
 	const phoneE164 = useMemo(() => toE164Ru(phone), [phone]);
 
 	const isValid = useMemo(() => {
 		const ln = lastName.trim().length >= 2;
 		const fn = firstName.trim().length >= 2;
-		const pn = patronymic.trim().length >= 2; // по ошибке бэка похоже требуется
+		const pn = patronymic.trim().length >= 2;
 		const ph = phoneE164.length > 0;
 		const dOk = districtIds.length >= 1;
 		const sOk = specialtyIds.length >= 1;
@@ -84,7 +78,6 @@ export default function ProfileSetupClient() {
 
 	const handleSubmit = useCallback(async () => {
 		if (!isValid) return;
-
 		try {
 			setSubmitting(true);
 			setError(null);
@@ -96,13 +89,12 @@ export default function ProfileSetupClient() {
 					firstName: firstName.trim(),
 					lastName: lastName.trim(),
 					patronymic: patronymic.trim(),
-					phone: phoneE164, // +79001234567
+					phone: phoneE164,
 					districtIds,
 					specialtyIds,
 				}),
 			});
 
-			// refresh me cache to unblock AuthGate redirects
 			const updatedMe = await api<MeResponse>('/users/me', { method: 'GET' });
 			queryClient.setQueryData(meQueryKey, updatedMe);
 			emitNeedsSetup(calcNeedsSetup(updatedMe));
@@ -117,144 +109,157 @@ export default function ProfileSetupClient() {
 		} finally {
 			setSubmitting(false);
 		}
-	}, [isValid, firstName, lastName, patronymic, phoneE164, districtIds, specialtyIds, router]);
+	}, [isValid, firstName, lastName, patronymic, phoneE164, districtIds, specialtyIds, router, queryClient]);
+
+	// --- Helpers for Chips UI ---
+
+	const toggleDistrict = (id: string) => {
+		setDistrictIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+	};
+
+	const toggleSpecialty = (id: string) => {
+		setSpecialtyIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+	};
 
 	return (
-		<div className="p-4 space-y-4">
-			<div className="card bg-base-100 shadow border border-base-200">
-				<div className="card-body space-y-4">
+		<div className="min-h-screen text-white font-sans p-4 pb-10">
+
+			{/* Header */}
+			<div className="py-4 mb-4">
+				<h1 className="text-2xl font-semibold tracking-tight">Настройка профиля</h1>
+				<p className="text-gray-500 text-sm mt-1">Заполните данные для начала работы</p>
+			</div>
+
+			{/* Error Alert */}
+			{error && (
+				<div className="alert bg-red-900/50 text-red-200 border-none rounded-2xl mb-6">
+					<svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+					<span>{error}</span>
+				</div>
+			)}
+
+			<div className="space-y-6">
+
+				{/* Section: Personal Info */}
+				<div className="space-y-4">
+					<h2 className="text-xs uppercase tracking-widest text-gray-500 font-semibold pl-1">Личные данные</h2>
+
+					<input
+						type="text"
+						className="w-full bg-[#1c1c1e] text-white p-4 rounded-[16px] outline-none border border-transparent focus:border-[#ccf333] transition-colors placeholder:text-gray-600"
+						placeholder="Фамилия"
+						value={lastName}
+						onChange={(e) => setLastName(e.target.value)}
+					/>
+					<input
+						type="text"
+						className="w-full bg-[#1c1c1e] text-white p-4 rounded-[16px] outline-none border border-transparent focus:border-[#ccf333] transition-colors placeholder:text-gray-600"
+						placeholder="Имя"
+						value={firstName}
+						onChange={(e) => setFirstName(e.target.value)}
+					/>
+					<input
+						type="text"
+						className="w-full bg-[#1c1c1e] text-white p-4 rounded-[16px] outline-none border border-transparent focus:border-[#ccf333] transition-colors placeholder:text-gray-600"
+						placeholder="Отчество"
+						value={patronymic}
+						onChange={(e) => setPatronymic(e.target.value)}
+					/>
+				</div>
+
+				{/* Section: Contacts */}
+				<div className="space-y-4">
+					<h2 className="text-xs uppercase tracking-widest text-gray-500 font-semibold pl-1">Контакты</h2>
 					<div>
-						<h1 className="card-title">Настройка профиля</h1>
-						<p className="text-sm opacity-70">Заполни данные, чтобы продолжить</p>
-					</div>
-
-					{error && (
-						<div className="alert alert-error">
-							<span>{error}</span>
-						</div>
-					)}
-
-					<div className="grid grid-cols-1 gap-3">
-						<div className="form-control">
-							<label className="label">
-								<span className="label-text">Фамилия</span>
-							</label>
-							<input
-								className="input input-bordered w-full"
-								placeholder="Иванов"
-								value={lastName}
-								onChange={(e: ChangeEvent<HTMLInputElement>) => setLastName(e.target.value)}
-							/>
-						</div>
-
-						<div className="form-control">
-							<label className="label">
-								<span className="label-text">Имя</span>
-							</label>
-							<input
-								className="input input-bordered w-full"
-								placeholder="Иван"
-								value={firstName}
-								onChange={(e: ChangeEvent<HTMLInputElement>) => setFirstName(e.target.value)}
-							/>
-						</div>
-
-						<div className="form-control">
-							<label className="label">
-								<span className="label-text">Отчество</span>
-							</label>
-							<input
-								className="input input-bordered w-full"
-								placeholder="Иванович"
-								value={patronymic}
-								onChange={(e: ChangeEvent<HTMLInputElement>) => setPatronymic(e.target.value)}
-							/>
-						</div>
-					</div>
-
-					<div className="form-control">
-						<label className="label">
-							<span className="label-text">Телефон</span>
-						</label>
-
 						<InputMask
 							mask="+7 (___) ___-__-__"
 							replacement={{ _: /\d/ }}
-							className="input input-bordered w-full"
+							className={`w-full bg-[#1c1c1e] text-white p-4 rounded-[16px] outline-none border transition-colors placeholder:text-gray-600 ${phone.length > 0 && !phoneE164 ? 'border-red-500' : 'border-transparent focus:border-[#ccf333]'}`}
 							placeholder="+7 (___) ___-__-__"
 							value={phone}
-							onChange={(e: ChangeEvent<HTMLInputElement>) => setPhone(e.target.value)}
+							onChange={(e) => setPhone(e.target.value)}
 							inputMode="tel"
 						/>
 						{phone.length > 0 && !phoneE164 && (
-							<p className="text-xs text-error mt-1">Неверный формат, нужен вид +79001234567</p>
+							<p className="text-xs text-red-500 mt-2 pl-2">Неверный формат номера</p>
 						)}
 					</div>
+				</div>
 
-					<div className="form-control">
-						<label className="label">
-							<span className="label-text">Районы работы</span>
-						</label>
+				{/* Section: Professional (Chips) */}
+				<div className="space-y-4">
+					<div className="flex justify-between items-end">
+						<h2 className="text-xs uppercase tracking-widest text-gray-500 font-semibold pl-1">Районы работы</h2>
+						<span className="text-xs text-gray-600">{districtIds.length} выбрано</span>
+					</div>
 
-						{loading ? (
-							<div className="flex items-center gap-2 opacity-70">
-								<span className="loading loading-spinner loading-sm" />
-								<span className="text-sm">Загрузка…</span>
-							</div>
-						) : (
-							<select
-								multiple
-								className="select select-bordered w-full min-h-40"
-								value={districtIds}
-								onChange={(e: ChangeEvent<HTMLSelectElement>) => {
-									const ids = Array.from(e.target.selectedOptions).map((o) => String(o.value));
-									setDistrictIds(ids);
-								}}
-							>
-								{districts.map((d) => (
-									<option key={d.id} value={String(d.id)}>
+					{loading ? (
+						<div className="flex gap-2 justify-center py-4">
+							<span className="loading loading-dots loading-md text-[#ccf333]"></span>
+						</div>
+					) : (
+						<div className="flex flex-wrap gap-2">
+							{districts.map(d => {
+								const isSelected = districtIds.includes(String(d.id));
+								return (
+									<button
+										key={d.id}
+										onClick={() => toggleDistrict(String(d.id))}
+										className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all duration-200 border ${isSelected
+											? 'bg-[#ccf333] text-black border-[#ccf333]'
+											: 'bg-[#1c1c1e] text-gray-400 border-white/5 hover:border-white/20'
+											}`}
+									>
 										{d.name}
-									</option>
-								))}
-							</select>
-						)}
-						<p className="text-xs opacity-60 mt-2">Можно выбрать несколько (Ctrl/⌘ + клик)</p>
+									</button>
+								)
+							})}
+						</div>
+					)}
+				</div>
+
+				<div className="space-y-4">
+					<div className="flex justify-between items-end">
+						<h2 className="text-xs uppercase tracking-widest text-gray-500 font-semibold pl-1">Специальности</h2>
+						<span className="text-xs text-gray-600">{specialtyIds.length} выбрано</span>
 					</div>
 
-					<div className="form-control">
-						<label className="label">
-							<span className="label-text">Специальности</span>
-						</label>
-
-						{loading ? (
-							<div className="flex items-center gap-2 opacity-70">
-								<span className="loading loading-spinner loading-sm" />
-								<span className="text-sm">Загрузка…</span>
-							</div>
-						) : (
-							<select
-								multiple
-								className="select select-bordered w-full min-h-40"
-								value={specialtyIds}
-								onChange={(e: ChangeEvent<HTMLSelectElement>) => {
-									const ids = Array.from(e.target.selectedOptions).map((o) => String(o.value));
-									setSpecialtyIds(ids);
-								}}
-							>
-								{specialties.map((s) => (
-									<option key={s.id} value={String(s.id)}>
+					{loading ? (
+						<div className="flex gap-2 justify-center py-4">
+							<span className="loading loading-dots loading-md text-[#ccf333]"></span>
+						</div>
+					) : (
+						<div className="flex flex-wrap gap-2">
+							{specialties.map(s => {
+								const isSelected = specialtyIds.includes(String(s.id));
+								return (
+									<button
+										key={s.id}
+										onClick={() => toggleSpecialty(String(s.id))}
+										className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all duration-200 border ${isSelected
+											? 'bg-[#ccf333] text-black border-[#ccf333]'
+											: 'bg-[#1c1c1e] text-gray-400 border-white/5 hover:border-white/20'
+											}`}
+									>
 										{s.name}
-									</option>
-								))}
-							</select>
-						)}
-						<p className="text-xs opacity-60 mt-2">Можно выбрать несколько (Ctrl/⌘ + клик)</p>
-					</div>
+									</button>
+								)
+							})}
+						</div>
+					)}
+				</div>
 
-					<button className="btn btn-primary w-full" onClick={handleSubmit} disabled={!isValid}>
-						{submitting ? 'Сохраняем…' : 'Сохранить'}
+				{/* Submit Button */}
+				<div className="pt-4">
+					<button
+						className="btn w-full h-14 rounded-full bg-[#ccf333] hover:bg-[#bbe02f] text-black text-lg font-bold border-none disabled:bg-[#1c1c1e] disabled:text-gray-600"
+						onClick={handleSubmit}
+						disabled={!isValid}
+					>
+						{submitting ? <span className="loading loading-spinner text-black"></span> : 'Сохранить профиль'}
 					</button>
 				</div>
+
 			</div>
 		</div>
 	);

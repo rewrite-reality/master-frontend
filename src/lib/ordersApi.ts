@@ -1,7 +1,18 @@
 // src/lib/ordersApi.ts
 import { api } from '@/lib/apiClient';
 
-export type OrderStatus = 'PENDING' | 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELED' | string;
+// ВАЖНО: привели статусы к backend (Prisma enum OrderStatus)
+// + оставили string, чтобы не падать, если прилетит новый статус
+export type OrderStatus =
+	| 'PENDING'
+	| 'ASSIGNED'
+	| 'ARRIVED'
+	| 'IN_PROGRESS'
+	| 'COMPLETED'
+	| 'CANCELLED'
+	| 'DISPUTE'
+	| 'CANCELED'
+	| string;
 
 export type OrderDto = {
 	id: string;
@@ -33,6 +44,10 @@ export type OrderDto = {
 };
 
 export type GetOrdersQuery = {
+	// Новый параметр для табов (если бэк уже поддерживает scope)
+	// Если бэк НЕ поддерживает — просто не передавай его, ничего не сломается.
+	scope?: 'available' | 'active' | 'history';
+
 	status?: string; // default PENDING on backend
 	districtId?: string;
 	specialtyId?: string;
@@ -50,15 +65,26 @@ export type AcceptOrderResponseDto = {
 	message?: string;
 };
 
-// adjust these 3 paths if your controller differs
+// Ответ от advance (под твой бэк: { id, status, amoLeadId })
+export type AdvanceOrderResponseDto = {
+	id: string;
+	status: OrderStatus;
+	amoLeadId?: string | null;
+};
+
+// adjust these paths if your controller differs
 const ROUTES = {
 	available: '/orders',
 	one: (id: string) => `/orders/${id}`,
 	accept: (id: string) => `/orders/${id}/accept`,
+	advance: (id: string) => `/orders/${id}/advance`,
 };
 
 function qs(query: GetOrdersQuery) {
 	const p = new URLSearchParams();
+
+	if (query.scope) p.set('scope', query.scope);
+
 	if (query.status) p.set('status', query.status);
 	if (query.districtId) p.set('districtId', query.districtId);
 	if (query.specialtyId) p.set('specialtyId', query.specialtyId);
@@ -68,11 +94,14 @@ function qs(query: GetOrdersQuery) {
 	if (query.search) p.set('search', query.search);
 	if (query.limit != null) p.set('limit', String(query.limit));
 	if (query.offset != null) p.set('offset', String(query.offset));
+
 	const s = p.toString();
 	return s ? `?${s}` : '';
 }
 
 export async function getAvailableOrders(query: GetOrdersQuery = {}) {
+	// Не меняем семантику: это по-прежнему "available" через /orders
+	// Просто позволяем (опционально) передавать scope, если бэк уже поддерживает.
 	return api<OrderDto[]>(`${ROUTES.available}${qs(query)}`, { method: 'GET' });
 }
 
@@ -82,4 +111,8 @@ export async function getOrderById(id: string) {
 
 export async function acceptOrder(id: string) {
 	return api<AcceptOrderResponseDto>(ROUTES.accept(id), { method: 'POST' });
+}
+
+export async function advanceOrderStatus(id: string) {
+	return api<AdvanceOrderResponseDto>(ROUTES.advance(id), { method: 'POST' });
 }

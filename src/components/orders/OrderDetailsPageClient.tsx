@@ -4,7 +4,11 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiError } from '@/lib/apiClient';
-import { acceptOrder, getOrderById, type OrderDto } from '@/lib/ordersApi';
+import { acceptOrder, advanceOrderStatus, getOrderById, type OrderDto } from '@/lib/ordersApi';
+import { OrderDetailsSkeleton } from '@/components/orders/OrderDetailsSkeleton';
+
+
+// --- Helpers ---
 
 function formatMoney(n?: number | null) {
 	if (n == null) return '—';
@@ -17,6 +21,46 @@ function formatWhen(iso?: string | null) {
 	return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
+type UiOrderStatus = OrderDto['status'];
+
+const STATUS_LABELS: Record<string, string> = {
+	PENDING: 'В поиске мастера',
+	ASSIGNED: 'Мастер найден',
+	ARRIVED: 'Мастер на месте',
+	IN_PROGRESS: 'В работе',
+	COMPLETED: 'Выполнено',
+	CANCELLED: 'Отменено',
+	DISPUTE: 'Спор',
+};
+
+const STEPS_FLOW: UiOrderStatus[] = ['ASSIGNED', 'ARRIVED', 'IN_PROGRESS', 'COMPLETED'];
+
+const STEP_LABELS: Record<string, string> = {
+	ASSIGNED: 'Принят',
+	ARRIVED: 'На месте',
+	IN_PROGRESS: 'Работает',
+	COMPLETED: 'Завершён',
+};
+
+function getNextStatus(status: UiOrderStatus): UiOrderStatus | null {
+	switch (status) {
+		case 'ASSIGNED':
+			return 'ARRIVED';
+		case 'ARRIVED':
+			return 'IN_PROGRESS';
+		case 'IN_PROGRESS':
+			return 'COMPLETED';
+		default:
+			return null;
+	}
+}
+
+function isFlowStatus(status: UiOrderStatus): status is 'ASSIGNED' | 'ARRIVED' | 'IN_PROGRESS' | 'COMPLETED' {
+	return status === 'ASSIGNED' || status === 'ARRIVED' || status === 'IN_PROGRESS' || status === 'COMPLETED';
+}
+
+// --- Components ---
+
 export default function OrderDetailsPageClient() {
 	const router = useRouter();
 	const params = useParams<{ id: string }>();
@@ -25,6 +69,7 @@ export default function OrderDetailsPageClient() {
 	const [order, setOrder] = useState<OrderDto | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [accepting, setAccepting] = useState(false);
+	const [advancing, setAdvancing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [toast, setToast] = useState<string | null>(null);
 
@@ -56,8 +101,47 @@ export default function OrderDetailsPageClient() {
 		};
 	}, [id]);
 
+	// --- Logic ---
+
 	const canSeeContacts = useMemo(() => {
-		return !!order?.clientPhone; // backend already nulls it if not assigned to this master
+		return !!order?.clientPhone;
+	}, [order]);
+
+	const statusRu = useMemo(() => {
+		if (!order?.status) return '—';
+		return STATUS_LABELS[order.status] ?? order.status;
+	}, [order?.status]);
+
+	const stepIndex = useMemo(() => {
+		if (!order?.status) return -1;
+		return STEPS_FLOW.indexOf(order.status); // -1 если PENDING/CANCELLED/DISPUTE/...
+	}, [order?.status]);
+
+	const canAdvance = useMemo(() => {
+		if (!order) return false;
+		// Продвигать статус может только назначенный мастер; косвенно определяем по доступным контактам
+		if (!canSeeContacts) return false;
+		if (!isFlowStatus(order.status)) return false;
+		return getNextStatus(order.status) !== null;
+	}, [order, canSeeContacts]);
+
+	const nextStatus = useMemo(() => {
+		if (!order) return null;
+		return getNextStatus(order.status);
+	}, [order]);
+
+	const nextStatusRu = useMemo(() => {
+		if (!nextStatus) return null;
+		return STATUS_LABELS[nextStatus] ?? nextStatus;
+	}, [nextStatus]);
+
+	const progressHint = useMemo(() => {
+		if (!order) return '';
+		if (order.status === 'PENDING') return 'Сначала примите заказ — затем сможете двигать статусы.';
+		if (order.status === 'COMPLETED') return 'Заказ завершён.';
+		if (order.status === 'CANCELLED') return 'Заказ отменён.';
+		if (order.status === 'DISPUTE') return 'Заказ в споре.';
+		return 'Нажмите кнопку ниже, чтобы перейти к следующему шагу.';
 	}, [order]);
 
 	const onAccept = useCallback(async () => {
@@ -66,14 +150,13 @@ export default function OrderDetailsPageClient() {
 			setAccepting(true);
 			setError(null);
 			await acceptOrder(id);
-			showToast('Заказ принят');
+			showToast('Заказ принят!');
 			const updated = await getOrderById(id);
 			setOrder(updated);
 		} catch (e) {
 			if (e instanceof ApiError) {
-				// common: 409 if someone accepted earlier
 				if (e.status === 409) {
-					showToast('Упс. Заказ уже приняли.');
+					showToast('Упс. Заказ уже занят.');
 					router.replace('/orders');
 					return;
 				}
@@ -86,25 +169,75 @@ export default function OrderDetailsPageClient() {
 		}
 	}, [id, accepting, showToast, router]);
 
+	const onAdvance = useCallback(async () => {
+		if (!id || advancing || !order) return;
+
+		const optimisticNext = getNextStatus(order.status);
+		if (!optimisticNext) return;
+
+		try {
+			setAdvancing(true);
+			setError(null);
+
+			// Optimistic UI: мгновенно двигаем статус в UI
+			setOrder((prev) => (prev ? { ...prev, status: optimisticNext } : prev));
+
+			await advanceOrderStatus(id);
+
+			showToast(`Статус: ${STATUS_LABELS[optimisticNext] ?? optimisticNext}`);
+			const updated = await getOrderById(id);
+			setOrder(updated);
+		} catch (e) {
+			// Откатим и перезагрузим реальное состояние
+			try {
+				const fresh = await getOrderById(id);
+				setOrder(fresh);
+			} catch {
+				// ignore
+			}
+
+			if (e instanceof ApiError) {
+				if (e.status === 409) {
+					showToast('Статус уже изменился. Обновили данные.');
+					return;
+				}
+				if (e.status === 403) {
+					showToast('Нет доступа для изменения статуса.');
+					return;
+				}
+				setError(e.message || `Ошибка ${e.status}`);
+				return;
+			}
+			setError(e instanceof Error ? e.message : 'Ошибка изменения статуса');
+		} finally {
+			setAdvancing(false);
+		}
+	}, [id, advancing, order, showToast]);
+
+	// --- Renders ---
+
 	if (loading) {
-		return (
-			<div className="p-4">
-				<div className="flex items-center gap-3 opacity-80">
-					<span className="loading loading-spinner loading-md" />
-					<span>Загрузка…</span>
-				</div>
-			</div>
-		);
+		return <OrderDetailsSkeleton />;
 	}
+
 
 	if (error && !order) {
 		return (
-			<div className="p-4 space-y-3">
-				<div className="alert alert-error">
-					<span>{error}</span>
+			<div className="min-h-screen bg-black p-6 flex flex-col justify-center items-center text-center space-y-6">
+				<div className="w-16 h-16 rounded-full bg-red-900/30 flex items-center justify-center text-red-500">
+					<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8">
+						<path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+					</svg>
 				</div>
-				<button className="btn w-full" onClick={() => router.replace('/orders')}>
-					Назад к заказам
+				<div className="space-y-2">
+					<h2 className="text-white text-lg font-medium">Ошибка</h2>
+					<p className="text-gray-400 text-sm max-w-[200px] mx-auto">{error}</p>
+				</div>
+				<button
+					className="btn btn-outline border-white/20 text-white rounded-full px-8 hover:bg-white hover:text-black hover:border-white transition-colors"
+					onClick={() => router.replace('/orders')}
+				>
+					Вернуться к списку
 				</button>
 			</div>
 		);
@@ -112,90 +245,211 @@ export default function OrderDetailsPageClient() {
 
 	if (!order) return null;
 
-	const district = order.district?.name ?? '—';
+	const district = order.district?.name ?? 'Район не указан';
 	const city = order.district?.city ?? '';
-	const specialty = order.specialty?.name ?? '—';
+	const specialty = order.specialty?.name ?? 'Специальность';
+	const address = [order.street, order.house, order.apartment ? `кв ${order.apartment}` : null].filter(Boolean).join(', ');
 
-	const address = [order.street, order.house, order.apartment ? `кв ${order.apartment}` : null]
-		.filter(Boolean)
-		.join(', ');
+	const showProgressBlock = order.status === 'PENDING' || isFlowStatus(order.status) || order.status === 'CANCELLED' || order.status === 'DISPUTE';
+
+	const progressIsActive = canSeeContacts && (isFlowStatus(order.status) || order.status === 'COMPLETED');
+	const progressBorder = progressIsActive ? 'bg-[#1c1c1e] border-[#ccf333]/30' : 'bg-transparent border-gray-800';
 
 	return (
-		<div className="p-4 space-y-4">
-			<button className="btn btn-ghost btn-sm w-fit" onClick={() => router.back()}>
-				← Назад
-			</button>
-
-			{error && (
-				<div className="alert alert-error">
-					<span>{error}</span>
-				</div>
-			)}
-
-			<div className="card bg-base-100 border border-base-200">
-				<div className="card-body p-4 gap-3">
-					<div className="flex items-start justify-between gap-3">
-						<h1 className="text-lg font-bold leading-snug">{order.title}</h1>
-						<span className="badge badge-primary badge-outline">{formatMoney(order.price)}</span>
-					</div>
-
-					<div className="flex flex-wrap gap-2">
-						<span className="badge badge-ghost">
-							{city ? `${city}, ` : ''}{district}
-						</span>
-						<span className="badge badge-ghost">{specialty}</span>
-						<span className="badge badge-ghost">{order.status}</span>
-					</div>
-
-					<div className="text-sm opacity-80 whitespace-pre-wrap">
-						{order.description || 'Без описания'}
-					</div>
-
-					<div className="divider my-1" />
-
-					<div className="space-y-1 text-sm">
-						<div className="flex justify-between gap-3">
-							<span className="opacity-70">Адрес</span>
-							<span className="text-right">{address || '—'}</span>
-						</div>
-						<div className="flex justify-between gap-3">
-							<span className="opacity-70">Когда</span>
-							<span className="text-right">{formatWhen(order.scheduledAt)}</span>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<div className="card bg-base-100 border border-base-200">
-				<div className="card-body p-4 gap-3">
-					<h2 className="font-semibold">Контакты клиента</h2>
-					{canSeeContacts ? (
-						<div className="space-y-1 text-sm">
-							<div className="flex justify-between gap-3">
-								<span className="opacity-70">Имя</span>
-								<span className="text-right">{order.clientName || '—'}</span>
-							</div>
-							<div className="flex justify-between gap-3">
-								<span className="opacity-70">Телефон</span>
-								<span className="text-right">{order.clientPhone || '—'}</span>
-							</div>
-						</div>
-					) : (
-						<p className="text-sm opacity-70">Контакты будут доступны после принятия заказа.</p>
-					)}
-				</div>
-			</div>
-
-			{!canSeeContacts && (
-				<button className="btn btn-primary w-full" onClick={onAccept} disabled={accepting}>
-					{accepting ? 'Принимаем…' : 'Принять заказ'}
+		<div className="min-h-screen text-white font-sans pb-24 relative">
+			{/* Header with Back Button */}
+			<div className="px-4 pt-4 pb-2 flex items-center gap-4">
+				<button
+					className="w-10 h-10 rounded-full bg-[#1c1c1e] flex items-center justify-center text-white hover:bg-[#2c2c2e] transition-colors"
+					onClick={() => router.back()}
+				>
+					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+						<path d="M19 12H5M12 19l-7-7 7-7" />
+					</svg>
 				</button>
-			)}
+				<h1 className="text-lg font-medium">Детали заказа</h1>
+			</div>
 
+			<div className="p-4 space-y-4 max-w-md mx-auto">
+				{/* Error Alert inside content */}
+				{error && (
+					<div className="alert alert-error bg-red-900/50 border-none text-red-200 text-sm py-3 rounded-2xl">
+						<span>{error}</span>
+					</div>
+				)}
+
+				{/* Main Info Card */}
+				<div className="card bg-[#1c1c1e] rounded-[24px] overflow-hidden">
+					<div className="card-body p-5 gap-5">
+						{/* Title & Price */}
+						<div className="flex items-start justify-between gap-4">
+							<h2 className="text-xl font-medium leading-snug">{order.title}</h2>
+							<span className="badge bg-[#ccf333] text-black font-bold h-8 px-3 rounded-full border-none whitespace-nowrap">
+								{formatMoney(order.price)}
+							</span>
+						</div>
+
+						{/* Tags Row */}
+						<div className="flex flex-wrap gap-2">
+							<span className="px-3 py-1.5 rounded-full bg-white/5 text-gray-300 text-xs font-medium border border-white/5">
+								{city ? `${city}, ` : ''}
+								{district}
+							</span>
+							<span className="px-3 py-1.5 rounded-full bg-white/5 text-gray-300 text-xs font-medium border border-white/5">
+								{specialty}
+							</span>
+							<span className="px-3 py-1.5 rounded-full bg-white/5 text-[#ccf333] text-xs font-medium border border-white/5">
+								{statusRu}
+							</span>
+						</div>
+
+						{/* Description */}
+						<div className="p-4 rounded-2xl bg-black/40 text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">
+							{order.description || 'Описание отсутствует'}
+						</div>
+
+						{/* Meta Info Table */}
+						<div className="space-y-3 pt-2">
+							{/* Location Row */}
+							<div className="flex items-start gap-3">
+								<div className="mt-1 w-8 h-8 rounded-full bg-[#2c2c2e] flex items-center justify-center shrink-0 text-[#ccf333]">
+									<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+										<path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+										<path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+									</svg>
+								</div>
+								<div className="flex flex-col">
+									<span className="text-gray-500 text-xs">Адрес</span>
+									<span className="text-white text-sm">{address || 'Скрыт до принятия'}</span>
+								</div>
+							</div>
+
+							{/* Time Row */}
+							<div className="flex items-start gap-3">
+								<div className="mt-1 w-8 h-8 rounded-full bg-[#2c2c2e] flex items-center justify-center shrink-0 text-[#ccf333]">
+									<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+										<path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+									</svg>
+								</div>
+								<div className="flex flex-col">
+									<span className="text-gray-500 text-xs">Время</span>
+									<span className="text-white text-sm">{formatWhen(order.scheduledAt)}</span>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				{/* Progress Card (вынесено отдельно, в стиле остальных карточек) */}
+				{showProgressBlock && (
+					<div className={`card rounded-[24px] border border-dashed transition-colors ${progressBorder}`}>
+						<div className="card-body p-5 gap-4">
+							<div className="flex items-center justify-between">
+								<h2 className="font-medium text-gray-300 flex items-center gap-2">
+									<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+										<path strokeLinecap="round" strokeLinejoin="round" d="M3 3v18h18" />
+										<path strokeLinecap="round" strokeLinejoin="round" d="M7 14l3-3 4 4 6-8" />
+									</svg>
+									Прогресс
+								</h2>
+
+								<span className="text-gray-500 text-xs">
+									{isFlowStatus(order.status) ? `${stepIndex + 1}/4` : order.status === 'PENDING' ? '0/4' : '—'}
+								</span>
+							</div>
+
+							<div className="rounded-2xl bg-black/30 border border-white/5 p-4">
+								<ul className="steps w-full">
+									{STEPS_FLOW.map((s, idx) => {
+										const active = isFlowStatus(order.status) ? idx <= stepIndex : false;
+										return (
+											<li key={s} className={['step', active ? 'step-primary' : ''].join(' ')}>
+												{STEP_LABELS[s] ?? s}
+											</li>
+										);
+									})}
+								</ul>
+
+								<div className="mt-3 text-xs text-gray-500">{progressHint}</div>
+							</div>
+						</div>
+					</div>
+				)}
+
+				{/* Contacts Card */}
+				<div
+					className={`card rounded-[24px] border border-dashed transition-colors ${canSeeContacts ? 'bg-[#1c1c1e] border-[#ccf333]/30' : 'bg-transparent border-gray-800'
+						}`}
+				>
+					<div className="card-body p-5 gap-4">
+						<h2 className="font-medium text-gray-300 flex items-center gap-2">
+							<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+								<path
+									strokeLinecap="round"
+									strokeLinejoin="round"
+									d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"
+								/>
+							</svg>
+							Клиент
+						</h2>
+
+						{canSeeContacts ? (
+							<div className="space-y-4">
+								<div className="flex justify-between items-center pb-2 border-b border-white/5">
+									<span className="text-gray-500 text-sm">Имя</span>
+									<span className="text-white font-medium">{order.clientName || '—'}</span>
+								</div>
+								<div className="flex justify-between items-center">
+									<span className="text-gray-500 text-sm">Телефон</span>
+									<a href={`tel:${order.clientPhone}`} className="text-[#ccf333] font-medium hover:underline">
+										{order.clientPhone || '—'}
+									</a>
+								</div>
+							</div>
+						) : (
+							<div className="text-center py-2 space-y-2">
+								<p className="text-gray-600 text-sm">Примите заказ, чтобы увидеть контакты клиента и точный адрес.</p>
+							</div>
+						)}
+					</div>
+				</div>
+			</div>
+
+			{/* Floating Action Button Area */}
+			<div className="fixed bottom-6 left-0 right-0 px-4 flex justify-center z-40 max-w-md mx-auto">
+				{/* PENDING -> Accept */}
+				{!canSeeContacts ? (
+					<button
+						className="btn w-full h-14 rounded-full bg-[#ccf333] hover:bg-[#bbe02f] text-black text-lg font-bold border-none shadow-[0_0_20px_rgba(204,243,51,0.3)] disabled:bg-gray-800 disabled:text-gray-500"
+						onClick={onAccept}
+						disabled={accepting}
+					>
+						{accepting ? <span className="loading loading-spinner" /> : 'Принять заказ'}
+					</button>
+				) : (
+					// Assigned -> Advance
+					<button
+						className="btn w-full h-14 rounded-full bg-[#ccf333] hover:bg-[#bbe02f] text-black text-lg font-bold border-none shadow-[0_0_20px_rgba(204,243,51,0.3)] disabled:bg-gray-800 disabled:text-gray-500"
+						onClick={onAdvance}
+						disabled={!canAdvance || advancing}
+					>
+						{advancing ? (
+							<span className="loading loading-spinner" />
+						) : (
+							<span className="flex items-center justify-center gap-2">
+								<span>Следующий шаг</span>
+								{nextStatusRu ? <span className="text-black/70 text-sm font-semibold">→ {nextStatusRu}</span> : null}
+							</span>
+						)}
+					</button>
+				)}
+			</div>
+
+			{/* Toast Notification */}
 			{toast && (
-				<div className="toast toast-top toast-center z-[60]">
-					<div className="alert alert-info shadow-lg">
-						<span>{toast}</span>
+				<div className="toast toast-top toast-center z-[60] w-full max-w-sm px-4 mt-4">
+					<div className="alert bg-[#323232] text-white border border-[#ccf333]/50 shadow-2xl rounded-2xl flex justify-center">
+						<span className="font-medium">{toast}</span>
 					</div>
 				</div>
 			)}
