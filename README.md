@@ -1,141 +1,77 @@
-# Telegram Mini Apps Next.js Template
+# MasterApp Frontend — Telegram Mini App
 
-This template demonstrates how developers can implement a web application on the
-Telegram Mini Apps platform using the following technologies and libraries:
+Это фронтенд-часть системы **MasterApp**, разработанная как **Telegram Mini App (TMA)**. Приложение предназначено для мастеров (исполнителей), позволяя им управлять заказами, отслеживать статус и настраивать профиль прямо внутри Telegram.
 
-- [Next.js](https://nextjs.org/)
-- [TypeScript](https://www.typescriptlang.org/)
-- [TON Connect](https://docs.ton.org/develop/dapps/ton-connect/overview)
-- [@telegram-apps SDK](https://docs.telegram-mini-apps.com/packages/telegram-apps-sdk/2-x)
-- [Telegram UI](https://github.com/Telegram-Mini-Apps/TelegramUI)
+## 🚀 Технологический стек
 
-> The template was created using [pnpm](https://pnpm.io/). Therefore, it is
-> required to use it for this project as well. Using other package managers, you
-> will receive a corresponding error.
+*   **Фреймворк:** [Next.js 15+](https://nextjs.org/) (App Router)
+*   **Язык:** [TypeScript](https://www.typescriptlang.org/)
+*   **Стилизация:** [Tailwind CSS](https://tailwindcss.com/) + [DaisyUI](https://daisyui.com/)
+*   **Интеграция с Telegram:** [@telegram-apps/sdk-react](https://docs.telegram-mini-apps.com/), [@tma.js/sdk-react](https://github.com/Telegram-Mini-Apps/tma.js)
+*   **Работа с данными:** [TanStack React Query v5](https://tanstack.com/query/latest)
+*   **HTTP Клиент:** Fetch API (с кастомной оберткой в `apiClient.ts`)
+*   **Анимации:** [Framer Motion](https://www.framer.com/motion/)
+*   **Локализация:** [next-intl](https://next-intl-docs.vercel.app/)
+*   **Real-time:** Server-Sent Events (SSE) для уведомлений о заказах
 
-## Install Dependencies
+## ✨ Основные функции
 
-If you have just cloned this template, you should install the project
-dependencies using the command:
+*   **Авторизация через Telegram:** Бесшовная аутентификация с использованием `initData`.
+*   **Управление заказами:** Просмотр списка доступных и активных заказов.
+*   **Профиль мастера:** Настройка личных данных, специальностей и рабочих зон (районов).
+*   **Real-time обновления:** Мгновенное получение новых заказов через SSE.
+*   **Поддержка TON:** Интеграция с TON Connect для будущих платежных функций.
+*   **Адаптивный дизайн:** Оптимизировано под мобильные устройства и встроенный браузер Telegram.
 
-```Bash
+## 🛠 Установка и запуск
+
+Проект использует `pnpm`. Если он у вас не установлен, выполните `npm install -g pnpm`.
+
+### 1. Клонирование и установка зависимостей
+```bash
 pnpm install
 ```
 
-## Scripts
-
-This project contains the following scripts:
-
-- `dev`. Runs the application in development mode.
-- `dev:https`. Runs the application in development mode using self-signed SSL
-  certificate.
-- `build`. Builds the application for production.
-- `start`. Starts the Next.js server in production mode.
-- `lint`. Runs [eslint](https://eslint.org/) to ensure the code quality meets
-  the required
-  standards.
-
-To run a script, use the `pnpm run` command:
-
-```Bash
-pnpm run {script}
-# Example: pnpm run build
+### 2. Настройка окружения
+Создайте файл `.env` в корне проекта (или отредактируйте существующий):
+```env
+NEXT_PUBLIC_API_BASE_URL=https://your-api-url.com
 ```
 
-## Create Bot and Mini App
-
-Before you start, make sure you have already created a Telegram Bot. Here is
-a [comprehensive guide](https://docs.telegram-mini-apps.com/platform/creating-new-app)
-on how to do it.
-
-## Run
-
-Although Mini Apps are designed to be opened
-within [Telegram applications](https://docs.telegram-mini-apps.com/platform/about#supported-applications),
-you can still develop and test them outside of Telegram during the development
-process.
-
-To run the application in the development mode, use the `dev` script:
-
+### 3. Запуск в режиме разработки
+Для локальной разработки с поддержкой HTTPS (необходимо для работы в Telegram):
 ```bash
-pnpm run dev
+pnpm run dev:https
 ```
+Приложение будет доступно по адресу `https://localhost:3002`.
 
-After this, you will see a similar message in your terminal:
+> **Важно:** При первом запуске браузер может выдать предупреждение о самоподписанном сертификате. Это нормально для локальной разработки TMA, нажмите "Advanced" -> "Proceed to localhost".
 
-```bash
-▲ Next.js 14.2.3
-- Local:        http://localhost:3000
+## 📂 Структура проекта
 
-✓ Starting...
-✓ Ready in 2.9s
-```
+*   `src/app` — Маршруты и страницы (Next.js App Router).
+    *   `(main)` — Основные страницы приложения (заказы, профиль).
+*   `src/components` — UI компоненты, разделенные по функциональным блокам.
+*   `src/lib` — Общие утилиты, настройка API клиента и интеграция с Telegram SDK.
+*   `src/hooks` — Кастомные React хуки.
+*   `src/providers` — Провайдеры контекста (QueryClient, Telegram context и др.).
+*   `src/types` — Типизация данных.
 
-To view the application, you need to open the `Local`
-link (`http://localhost:3000` in this example) in your browser.
+## 📱 Запуск внутри Telegram
 
-It is important to note that some libraries in this template, such as
-`@telegram-apps/sdk`, are not intended for use outside of Telegram.
+1.  Запустите проект локально или разверните на хостинге (например, Vercel).
+2.  Если запускаете локально, используйте [ngrok](https://ngrok.com/) или аналоги, чтобы получить публичный HTTPS URL.
+3.  В [@BotFather](https://t.me/botfather) создайте или выберите бота.
+4.  Перейдите в `Bot Settings` -> `Menu Button` / `Inline Mode` и укажите URL вашего приложения.
+5.  Откройте приложение через бота.
 
-Nevertheless, they appear to function properly. This is because the
-`src/hooks/useTelegramMock.ts` file, which is imported in the application's
-`Root` component, employs the `mockTelegramEnv` function to simulate the
-Telegram environment. This trick convinces the application that it is
-running in a Telegram-based environment. Therefore, be cautious not to use this
-function in production mode unless you fully understand its implications.
+## 📝 Скрипты
 
-### Run Inside Telegram
+*   `pnpm run dev` — Запуск обычного дев-сервера.
+*   `pnpm run dev:https` — Запуск с HTTPS для Telegram.
+*   `pnpm run build` — Сборка проекта для продакшена.
+*   `pnpm run start` — Запуск собранного приложения.
+*   `pnpm run lint` — Проверка кода линтером.
 
-Although it is possible to run the application outside of Telegram, it is
-recommended to develop it within Telegram for the most accurate representation
-of its real-world functionality.
-
-To run the application inside Telegram, [@BotFather](https://t.me/botfather)
-requires an HTTPS link.
-
-This template already provides a solution.
-
-To retrieve a link with the HTTPS protocol, consider using the `dev:https`
-script:
-
-```bash
-$ pnpm run dev:https
-
-▲ Next.js 14.2.3
-- Local:        https://localhost:3000
-
-✓ Starting...
-✓ Ready in 2.4s
-```
-
-Visiting the `Local` link (`https://localhost:3000` in this example) in your
-browser, you will see the following warning:
-
-![SSL Warning](assets/ssl-warning.png)
-
-This browser warning is normal and can be safely ignored as long as the site is
-secure. Click the `Proceed to localhost (unsafe)` button to continue and view
-the application.
-
-Once the application is displayed correctly, submit the
-link `https://127.0.0.1:3000` (`https://localhost:3000` is considered as invalid
-by BotFather) as the Mini App link to [@BotFather](https://t.me/botfather).
-Then, navigate to [https://web.telegram.org/k/](https://web.telegram.org/k/),
-find your bot, and launch the Telegram Mini App. This approach provides the full
-development experience.
-
-## Deploy
-
-The easiest way to deploy your Next.js app is to use
-the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme)
-from the creators of Next.js.
-
-Check out
-the [Next.js deployment documentation](https://nextjs.org/docs/deployment) for
-more details.
-
-## Useful Links
-
-- [Platform documentation](https://docs.telegram-mini-apps.com/)
-- [@telegram-apps/sdk-react documentation](https://docs.telegram-mini-apps.com/packages/telegram-apps-sdk-react)
-- [Telegram developers community chat](https://t.me/devs)
+---
+Разработано для платформы Telegram Mini Apps.
