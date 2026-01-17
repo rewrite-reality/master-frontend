@@ -2,11 +2,11 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/lib/apiClient';
 import { acceptOrder, advanceOrderStatus, getOrderById, type OrderDto } from '@/lib/ordersApi';
 import { OrderDetailsSkeleton } from '@/components/orders/OrderDetailsSkeleton';
-
 
 // --- Helpers ---
 
@@ -65,12 +65,8 @@ export default function OrderDetailsPageClient() {
 	const router = useRouter();
 	const params = useParams<{ id: string }>();
 	const id = params?.id;
+	const queryClient = useQueryClient();
 
-	const [order, setOrder] = useState<OrderDto | null>(null);
-	const [loading, setLoading] = useState(true);
-	const [accepting, setAccepting] = useState(false);
-	const [advancing, setAdvancing] = useState(false);
-	const [error, setError] = useState<string | null>(null);
 	const [toast, setToast] = useState<string | null>(null);
 
 	const showToast = useCallback((msg: string) => {
@@ -78,30 +74,99 @@ export default function OrderDetailsPageClient() {
 		window.setTimeout(() => setToast(null), 2000);
 	}, []);
 
-	useEffect(() => {
-		if (!id) return;
-		let cancelled = false;
+	// --- Queries ---
 
-		(async () => {
-			try {
-				setLoading(true);
-				setError(null);
-				const data = await getOrderById(id);
-				if (!cancelled) setOrder(data);
-			} catch (e) {
-				if (cancelled) return;
-				setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Ошибка загрузки заказа');
-			} finally {
-				if (!cancelled) setLoading(false);
+	const {
+		data: order,
+		isLoading,
+		isError,
+		error: queryError
+	} = useQuery({
+		queryKey: ['orders', id],
+		queryFn: () => getOrderById(id!),
+		enabled: !!id,
+		retry: 1, // Не ретраить бесконечно, если 404
+	});
+
+	const errorMsg = useMemo(() => {
+		if (!queryError) return null;
+		if (queryError instanceof ApiError) return queryError.message;
+		return queryError instanceof Error ? queryError.message : 'Ошибка загрузки заказа';
+	}, [queryError]);
+
+	// --- Mutations ---
+
+	// 1. Принятие заказа
+	const acceptMutation = useMutation({
+		mutationFn: () => acceptOrder(id!),
+		onSuccess: () => {
+			showToast('Заказ принят!');
+			// Инвалидируем, чтобы подтянуть свежие данные (в т.ч. контакты)
+			queryClient.invalidateQueries({ queryKey: ['orders', id] });
+		},
+		onError: (e: unknown) => {
+			if (e instanceof ApiError && e.status === 409) {
+				showToast('Упс. Заказ уже занят.');
+				router.replace('/orders');
+				return;
 			}
-		})();
+			const msg = e instanceof ApiError ? (e.message || `Ошибка ${e.status}`) : 'Ошибка принятия заказа';
+			showToast(msg); // Показываем ошибку тостом, т.к. мы на той же странице
+		}
+	});
 
-		return () => {
-			cancelled = true;
-		};
-	}, [id]);
+	// 2. Смена статуса (Optimistic Update)
+	const advanceMutation = useMutation({
+		mutationFn: () => advanceOrderStatus(id!),
+		onMutate: async () => {
+			// Отменяем исходящие запросы, чтобы они не перезаписали наш оптимистичный стейт
+			await queryClient.cancelQueries({ queryKey: ['orders', id] });
 
-	// --- Logic ---
+			// Сохраняем предыдущее состояние для отката
+			const previousOrder = queryClient.getQueryData<OrderDto>(['orders', id]);
+
+			// Оптимистично обновляем кэш
+			if (previousOrder) {
+				const optimisticNext = getNextStatus(previousOrder.status);
+				if (optimisticNext) {
+					queryClient.setQueryData<OrderDto>(['orders', id], {
+						...previousOrder,
+						status: optimisticNext,
+					});
+					showToast(`Статус: ${STATUS_LABELS[optimisticNext] ?? optimisticNext}`);
+				}
+			}
+
+			return { previousOrder };
+		},
+		onError: (e: unknown, _, context) => {
+			// Откат к предыдущему состоянию
+			if (context?.previousOrder) {
+				queryClient.setQueryData(['orders', id], context.previousOrder);
+			}
+
+			if (e instanceof ApiError) {
+				if (e.status === 409) {
+					showToast('Статус уже изменился. Обновили данные.');
+					// Инвалидация произойдет в onSettled
+					return;
+				}
+				if (e.status === 403) {
+					showToast('Нет доступа для изменения статуса.');
+					return;
+				}
+				showToast(e.message || `Ошибка ${e.status}`);
+				return;
+			}
+			showToast('Не удалось изменить статус');
+		},
+		onSettled: () => {
+			// Всегда обновляем данные с сервера после завершения (успех или ошибка)
+			queryClient.invalidateQueries({ queryKey: ['orders', id] });
+		},
+	});
+
+	// --- Logic helpers based on Query Data ---
 
 	const canSeeContacts = useMemo(() => {
 		return !!order?.clientPhone;
@@ -114,12 +179,12 @@ export default function OrderDetailsPageClient() {
 
 	const stepIndex = useMemo(() => {
 		if (!order?.status) return -1;
-		return STEPS_FLOW.indexOf(order.status); // -1 если PENDING/CANCELLED/DISPUTE/...
+		return STEPS_FLOW.indexOf(order.status);
 	}, [order?.status]);
 
 	const canAdvance = useMemo(() => {
 		if (!order) return false;
-		// Продвигать статус может только назначенный мастер; косвенно определяем по доступным контактам
+		// Продвигать статус может только назначенный мастер (видит контакты)
 		if (!canSeeContacts) return false;
 		if (!isFlowStatus(order.status)) return false;
 		return getNextStatus(order.status) !== null;
@@ -144,84 +209,25 @@ export default function OrderDetailsPageClient() {
 		return 'Нажмите кнопку ниже, чтобы перейти к следующему шагу.';
 	}, [order]);
 
-	const onAccept = useCallback(async () => {
-		if (!id || accepting) return;
-		try {
-			setAccepting(true);
-			setError(null);
-			await acceptOrder(id);
-			showToast('Заказ принят!');
-			const updated = await getOrderById(id);
-			setOrder(updated);
-		} catch (e) {
-			if (e instanceof ApiError) {
-				if (e.status === 409) {
-					showToast('Упс. Заказ уже занят.');
-					router.replace('/orders');
-					return;
-				}
-				setError(e.message || `Ошибка ${e.status}`);
-				return;
-			}
-			setError(e instanceof Error ? e.message : 'Ошибка принятия заказа');
-		} finally {
-			setAccepting(false);
-		}
-	}, [id, accepting, showToast, router]);
+	// --- Handlers ---
 
-	const onAdvance = useCallback(async () => {
-		if (!id || advancing || !order) return;
+	const onAccept = () => {
+		if (!id || acceptMutation.isPending) return;
+		acceptMutation.mutate();
+	};
 
-		const optimisticNext = getNextStatus(order.status);
-		if (!optimisticNext) return;
-
-		try {
-			setAdvancing(true);
-			setError(null);
-
-			// Optimistic UI: мгновенно двигаем статус в UI
-			setOrder((prev) => (prev ? { ...prev, status: optimisticNext } : prev));
-
-			await advanceOrderStatus(id);
-
-			showToast(`Статус: ${STATUS_LABELS[optimisticNext] ?? optimisticNext}`);
-			const updated = await getOrderById(id);
-			setOrder(updated);
-		} catch (e) {
-			// Откатим и перезагрузим реальное состояние
-			try {
-				const fresh = await getOrderById(id);
-				setOrder(fresh);
-			} catch {
-				// ignore
-			}
-
-			if (e instanceof ApiError) {
-				if (e.status === 409) {
-					showToast('Статус уже изменился. Обновили данные.');
-					return;
-				}
-				if (e.status === 403) {
-					showToast('Нет доступа для изменения статуса.');
-					return;
-				}
-				setError(e.message || `Ошибка ${e.status}`);
-				return;
-			}
-			setError(e instanceof Error ? e.message : 'Ошибка изменения статуса');
-		} finally {
-			setAdvancing(false);
-		}
-	}, [id, advancing, order, showToast]);
+	const onAdvance = () => {
+		if (!id || advanceMutation.isPending || !order) return;
+		advanceMutation.mutate();
+	};
 
 	// --- Renders ---
 
-	if (loading) {
+	if (isLoading) {
 		return <OrderDetailsSkeleton />;
 	}
 
-
-	if (error && !order) {
+	if (isError && !order) {
 		return (
 			<div className="min-h-screen bg-black p-6 flex flex-col justify-center items-center text-center space-y-6">
 				<div className="w-16 h-16 rounded-full bg-red-900/30 flex items-center justify-center text-red-500">
@@ -231,7 +237,7 @@ export default function OrderDetailsPageClient() {
 				</div>
 				<div className="space-y-2">
 					<h2 className="text-white text-lg font-medium">Ошибка</h2>
-					<p className="text-gray-400 text-sm max-w-[200px] mx-auto">{error}</p>
+					<p className="text-gray-400 text-sm max-w-[200px] mx-auto">{errorMsg}</p>
 				</div>
 				<button
 					className="btn btn-outline border-white/20 text-white rounded-full px-8 hover:bg-white hover:text-black hover:border-white transition-colors"
@@ -251,7 +257,6 @@ export default function OrderDetailsPageClient() {
 	const address = [order.street, order.house, order.apartment ? `кв ${order.apartment}` : null].filter(Boolean).join(', ');
 
 	const showProgressBlock = order.status === 'PENDING' || isFlowStatus(order.status) || order.status === 'CANCELLED' || order.status === 'DISPUTE';
-
 	const progressIsActive = canSeeContacts && (isFlowStatus(order.status) || order.status === 'COMPLETED');
 	const progressBorder = progressIsActive ? 'bg-[#1c1c1e] border-[#ccf333]/30' : 'bg-transparent border-gray-800';
 
@@ -271,10 +276,10 @@ export default function OrderDetailsPageClient() {
 			</div>
 
 			<div className="p-4 space-y-4 max-w-md mx-auto">
-				{/* Error Alert inside content */}
-				{error && (
+				{/* Error Alert inside content (если есть ошибка но данные показаны из кэша) */}
+				{isError && (
 					<div className="alert alert-error bg-red-900/50 border-none text-red-200 text-sm py-3 rounded-2xl">
-						<span>{error}</span>
+						<span>{errorMsg}</span>
 					</div>
 				)}
 
@@ -340,7 +345,7 @@ export default function OrderDetailsPageClient() {
 					</div>
 				</div>
 
-				{/* Progress Card (вынесено отдельно, в стиле остальных карточек) */}
+				{/* Progress Card */}
 				{showProgressBlock && (
 					<div className={`card rounded-[24px] border border-dashed transition-colors ${progressBorder}`}>
 						<div className="card-body p-5 gap-4">
@@ -422,18 +427,18 @@ export default function OrderDetailsPageClient() {
 					<button
 						className="btn w-full h-14 rounded-full bg-[#ccf333] hover:bg-[#bbe02f] text-black text-lg font-bold border-none shadow-[0_0_20px_rgba(204,243,51,0.3)] disabled:bg-gray-800 disabled:text-gray-500"
 						onClick={onAccept}
-						disabled={accepting}
+						disabled={acceptMutation.isPending}
 					>
-						{accepting ? <span className="loading loading-spinner" /> : 'Принять заказ'}
+						{acceptMutation.isPending ? <span className="loading loading-spinner" /> : 'Принять заказ'}
 					</button>
 				) : (
 					// Assigned -> Advance
 					<button
 						className="btn w-full h-14 rounded-full bg-[#ccf333] hover:bg-[#bbe02f] text-black text-lg font-bold border-none shadow-[0_0_20px_rgba(204,243,51,0.3)] disabled:bg-gray-800 disabled:text-gray-500"
 						onClick={onAdvance}
-						disabled={!canAdvance || advancing}
+						disabled={!canAdvance || advanceMutation.isPending}
 					>
-						{advancing ? (
+						{advanceMutation.isPending ? (
 							<span className="loading loading-spinner" />
 						) : (
 							<span className="flex items-center justify-center gap-2">
