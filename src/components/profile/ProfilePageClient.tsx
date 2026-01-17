@@ -7,7 +7,7 @@ import { useRawInitData } from '@tma.js/sdk-react'; // <--- Используем
 import { ApiError, api } from '@/lib/apiClient';
 import { calcNeedsSetup, useMeQuery } from '@/components/auth/meQuery';
 import { ProfileSkeleton } from './ProfileSkeleton';
-import { TopProgressBar } from '../ui/TopProgressBar';
+// import { TopProgressBar } from '../ui/TopProgressBar';
 
 // --- Helpers ---
 
@@ -143,9 +143,9 @@ export default function ProfilePageClient() {
 		);
 	}
 
-	if (!me || needsSetup) {
-		return <TopProgressBar className="fixed left-0 right-0 top-0 z-50 bg-[#ccf333]" />;
-	}
+	// if (!me || needsSetup) {
+	// 	return <TopProgressBar className="fixed left-0 right-0 top-0 z-50 bg-[#ccf333]" />;
+	// }
 
 	// --- Data Preparation ---
 
@@ -190,9 +190,9 @@ export default function ProfilePageClient() {
 
 	return (
 		<div className="min-h-screen text-white font-sans pb-20">
-			{(isFetching || isBalanceFetching) && (
+			{/* {(isFetching || isBalanceFetching) && (
 				<TopProgressBar className="fixed left-0 right-0 top-0 z-50 bg-[#ccf333]" />
-			)}
+			)} */}
 
 			{/* Header */}
 			<div className="px-4 pt-4 pb-2 flex items-center justify-between">

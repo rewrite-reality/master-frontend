@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError } from '@/lib/apiClient';
 import { getAvailableOrders, type OrderDto } from '@/lib/ordersApi';
-import { TopProgressBar } from '../ui/TopProgressBar';
+// import { TopProgressBar } from '../ui/TopProgressBar';
 import { EmptyStateSkeleton, OrdersListSkeleton } from './OrderSkeleton';
 
 
@@ -165,8 +165,8 @@ export default function OrdersPageClient() {
 
 	return (
 		<div className="min-h-screen text-white font-sans pb-10">
-			{/* Top Loader */}
-			{isFetching && <TopProgressBar className="fixed left-0 right-0 top-0 z-50 bg-[#ccf333]" />}
+			{/* Top Loader
+			{isFetching && <TopProgressBar className="fixed left-0 right-0 top-0 z-50 bg-[#ccf333]" />} */}
 
 			<div className="p-4 max-w-md mx-auto space-y-6">
 				{/* Header */}

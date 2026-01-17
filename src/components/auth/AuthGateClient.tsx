@@ -6,7 +6,7 @@ import { useRawInitData } from '@tma.js/sdk-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/lib/apiClient';
 import { bootstrapMe, subscribeNeedsSetup } from './meQuery';
-import { TopProgressBar } from '../ui/TopProgressBar';
+// import { TopProgressBar } from '../ui/TopProgressBar';
 
 function normalizeInitData(raw: string): string {
 	let s = raw.trim();
@@ -93,9 +93,9 @@ export function AuthGateClient({ children }: { children: ReactNode }) {
 		);
 	}
 
-	if (!ready) {
-		return <TopProgressBar className="fixed left-0 right-0 top-0 z-50" />;
-	}
+	// if (!ready) {
+	// 	return <TopProgressBar className="fixed left-0 right-0 top-0 z-50" />;
+	// }
 
 	return <>{children}</>;
 }
