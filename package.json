@@ -10,6 +10,7 @@
 		"lint": "next lint"
 	},
 	"dependencies": {
+		"@formkit/auto-animate": "^0.9.0",
 		"@react-input/mask": "^2.0.4",
 		"@tanstack/react-query": "^5.90.18",
 		"@telegram-apps/telegram-ui": "^2.1.13",
@@ -19,6 +20,7 @@
 		"clsx": "^2.1.1",
 		"daisyui": "^5.5.14",
 		"eruda": "^3.4.3",
+		"framer-motion": "^12.26.2",
 		"next": "16.0.7",
 		"next-intl": "^4.5.5",
 		"normalize.css": "^8.0.1",
