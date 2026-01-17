@@ -26,7 +26,9 @@
 ## Пример страниц
 
 <div align="center">
-  <img src="https://github.com/rewrite-reality/master-frontend/blob/main/screen/photo_2026-01-17_22-06-12.jpg?raw=true" alt="Скриншот интерфейса MasterApp" width="320">
+  <img src="https://github.com/rewrite-reality/master-frontend/blob/main/screen/photo_2026-01-17_22-06-12.jpg?raw=true" alt="Скриншот 1 MasterApp" width="30%">
+  <img src="https://github.com/rewrite-reality/master-frontend/blob/main/screen/photo_2026-01-17_22-06-13.jpg?raw=true" alt="Скриншот 2 MasterApp" width="30%">
+  <img src="https://github.com/rewrite-reality/master-frontend/blob/main/screen/photo_2026-01-17_22-06-24.jpg?raw=true" alt="Скриншот 3 MasterApp" width="30%">
 </div>
 
 ## Установка и запуск
