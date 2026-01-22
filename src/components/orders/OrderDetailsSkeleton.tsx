@@ -5,7 +5,7 @@ import React from 'react';
 export function OrderDetailsSkeleton() {
 	return (
 		<div className="min-h-screen text-white font-sans pb-24 relative">
-			{/* Header with Back Button + Title (как в реальной странице) */}
+			{/* Header with Back Button + Title (как в реальной странице)
 			<div className="px-4 pt-4 pb-2 flex items-center gap-4">
 				<button
 					type="button"
@@ -28,7 +28,7 @@ export function OrderDetailsSkeleton() {
 				</button>
 
 				<h1 className="text-lg font-medium">Детали заказа</h1>
-			</div>
+			</div> */}
 
 			<div className="p-4 space-y-4 max-w-md mx-auto">
 				{/* Main Info Card */}

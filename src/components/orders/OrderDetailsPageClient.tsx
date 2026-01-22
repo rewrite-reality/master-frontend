@@ -93,11 +93,19 @@ export default function OrderDetailsPageClient() {
 			if (previousData) return previousData;
 			// Ищем во всех запросах, начинающихся с 'orders'
 			const allOrdersQueries = queryClient.getQueriesData<OrderDto[]>({ queryKey: ['orders'] });
-			for (const [, listData] of allOrdersQueries) {
-				const found = listData?.find((d) => d.id === id);
+
+			for (const [queryKey, listData] of allOrdersQueries) {
+				// 1. Если данных нет или это не массив — пропускаем сразу
+				if (!listData || !Array.isArray(listData)) {
+					continue;
+				}
+
+				// Теперь безопасно ищем
+				const found = listData.find((d) => d.id === id);
 				if (found) return found;
 			}
 			return undefined;
+
 		},
 	});
 
