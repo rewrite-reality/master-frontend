@@ -347,16 +347,29 @@ export default function OrderDetailsPageClient() {
 									<div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#1c1c1e] to-transparent" />
 
 									{(order.lat && order.lon) && (
-										<a
-											href={`https://yandex.ru/maps/?pt=${order.lon},${order.lat}&z=16&l=map`}
-											className="absolute bottom-4 right-4 w-10 h-10 bg-[#ccf333] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-											onClick={(e) => e.stopPropagation()}
+										<button
+											className="absolute bottom-4 right-4 w-10 h-10 bg-[#ccf333] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform cursor-pointer z-10"
+											onClick={(e) => {
+												e.stopPropagation();
+												// Формируем универсальную ссылку
+												const url = `https://yandex.ru/maps/?pt=${order.lon},${order.lat}&z=16&l=map`;
+
+												// @ts-ignore: Проверяем наличие SDK Telegram
+												if (typeof window !== 'undefined' && window.Telegram?.WebApp?.openLink) {
+													// Этот метод принудительно открывает ссылку во внешнем приложении/браузере
+													// @ts-ignore
+													window.Telegram.WebApp.openLink(url);
+												} else {
+													// Фолбек для десктопа (разработка)
+													window.open(url, '_blank', 'noopener,noreferrer');
+												}
+											}}
 										>
 											<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="black" className="w-5 h-5">
 												<path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
 												<path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
 											</svg>
-										</a>
+										</button>
 									)}
 								</div>
 							)}
@@ -417,6 +430,7 @@ export default function OrderDetailsPageClient() {
 								</div>
 							</div>
 						</div>
+
 
 						{/* Progress Card */}
 						{showProgressBlock && (
