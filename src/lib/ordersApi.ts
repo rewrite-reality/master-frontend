@@ -41,6 +41,12 @@ export type OrderDto = {
 	clientPhone?: string | null;
 
 	masterId?: string | null;
+
+	mapUrl?: string | null;
+	proofPhotos?: string[] | null;
+
+	lat?: number | null;
+	lon?: number | null;
 };
 
 export type GetOrdersQuery = {
@@ -115,4 +121,18 @@ export async function acceptOrder(id: string) {
 
 export async function advanceOrderStatus(id: string) {
 	return api<AdvanceOrderResponseDto>(ROUTES.advance(id), { method: 'POST' });
+}
+
+export async function submitOrderReview(orderId: string, files: File[]) {
+	const formData = new FormData();
+
+	files.forEach(file => {
+		formData.append('photos', file);
+	});
+
+	// Не устанавливаем Content-Type вручную, чтобы браузер сам поставил boundary
+	return api<any>(`/orders/${orderId}/review`, {
+		method: 'POST',
+		body: formData,
+	});
 }

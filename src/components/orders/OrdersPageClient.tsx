@@ -34,7 +34,7 @@ function formatDate(iso?: string | null) {
 const getStatusProgress = (status: string = '') => {
 	const s = status.toUpperCase();
 	if (s.includes('PENDING')) return 15;
-	if (s.includes('ASSIGNED') || s.includes('ARRIVED') || s.includes('IN_PROGRESS')) return 50;
+	if (s.includes('ASSIGNED') || s.includes('ARRIVED') || s.includes('IN_PROGRESS') || s.includes('REVIEW')) return 50;
 	if (s.includes('COMPLETED')) return 100;
 	return 25;
 };
@@ -56,7 +56,17 @@ function OrderCard({ o }: { o: OrderDto }) {
 	return (
 		// Link остается простым, браузер сам запомнит историю URL с параметром ?tab=...
 		<Link href={`/orders/${o.id}`} className="block group">
-			<div className="card bg-[#1c1c1e] text-white shadow-lg border border-white/5 transition-transform active:scale-[0.99] rounded-[24px]">
+			<div className="card bg-[#1c1c1e] text-white shadow-lg border border-white/5 transition-transform active:scale-[0.99] rounded-[24px] overflow-hidden">
+				{o.mapUrl && (
+					<div className="relative">
+						<img
+							src={o.mapUrl}
+							alt="Map"
+							className="h-32 w-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+						/>
+						<div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[#1c1c1e] to-transparent" />
+					</div>
+				)}
 				{/* ... Внутренности карточки без изменений ... */}
 				<div className="card-body p-5 gap-5">
 					<div className="flex items-center justify-between">
