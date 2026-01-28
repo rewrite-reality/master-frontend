@@ -7,8 +7,8 @@ import BottomBar from '@/components/navigation/BottomBar';
 export default function BottomBarSlot({ children }: { children: ReactNode }) {
 	const pathname = usePathname();
 
-	// скрываем на /orders/[id]
-	const hideBottomBar = /^\/orders\/[^/]+$/.test(pathname);
+	// скрываем на /orders/[id] и /profile/setup
+	const hideBottomBar = /^\/orders\/[^/]+$/.test(pathname) || pathname === '/profile/setup';
 
 	// если скрыли bottom bar — уменьшаем padding снизу (или вообще убираем)
 	return (
