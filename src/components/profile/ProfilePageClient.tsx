@@ -7,7 +7,7 @@ import { useRawInitData } from '@tma.js/sdk-react'; // <--- Используем
 import { ApiError, api } from '@/lib/apiClient';
 import { calcNeedsSetup, useMeQuery } from '@/components/auth/meQuery';
 import { ProfileSkeleton } from './ProfileSkeleton';
-// import { TopProgressBar } from '../ui/TopProgressBar';
+import { DebtWidget } from './DebtWidget';
 
 // --- Helpers ---
 
@@ -254,6 +254,16 @@ export default function ProfilePageClient() {
 				</div>
 			</div>
 
+
+			{/* Finance Section */}
+			{
+				profile?.finance && (
+					<div className="px-4 mb-4">
+						<DebtWidget finance={profile.finance} />
+					</div>
+				)
+			}
+
 			{/* Info Section */}
 			<div className="px-4 space-y-4">
 				{/* Specialties */}
@@ -351,13 +361,15 @@ export default function ProfilePageClient() {
 			</div>
 
 			{/* Toast Notification */}
-			{toast && (
-				<div className="toast toast-top toast-center z-[60] w-full max-w-sm px-4 mt-4">
-					<div className="alert bg-[#323232] text-white border border-[#ccf333]/50 shadow-2xl rounded-2xl flex justify-center">
-						<span className="font-medium">{toast}</span>
+			{
+				toast && (
+					<div className="toast toast-top toast-center z-[60] w-full max-w-sm px-4 mt-4">
+						<div className="alert bg-[#323232] text-white border border-[#ccf333]/50 shadow-2xl rounded-2xl flex justify-center">
+							<span className="font-medium">{toast}</span>
+						</div>
 					</div>
-				</div>
-			)}
-		</div>
+				)
+			}
+		</div >
 	);
 }

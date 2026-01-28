@@ -1,10 +1,12 @@
 'use client';
 
 import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InputMask } from '@react-input/mask';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/apiClient';
+import { getVerificationStatus, submitVerification } from '@/lib/verificationApi';
+import { VerificationUploadModal } from './VerificationUploadModal';
 import { calcNeedsSetup, emitNeedsSetup, meQueryKey, type MeResponse } from '@/components/auth/meQuery';
 
 type Item = { id: number; name: string };
@@ -36,6 +38,27 @@ export default function ProfileSetupClient() {
 	const [loading, setLoading] = useState(true);
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+
+	const [isUploadModalOpen, setUploadModalOpen] = useState(false);
+
+	// --- Queries ---
+
+	const { data: verification } = useQuery({
+		queryKey: ['verification', 'status'],
+		queryFn: getVerificationStatus,
+		retry: false,
+		staleTime: 10 * 1000,
+	});
+
+	const submitVerificationMutation = useMutation({
+		mutationFn: submitVerification,
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['verification', 'status'] });
+		},
+		onError: (e: unknown) => {
+			setError(e instanceof ApiError ? (e.message || 'Ошибка отправки') : 'Ошибка');
+		}
+	});
 
 	// --- Data Loading ---
 
@@ -139,6 +162,58 @@ export default function ProfileSetupClient() {
 			)}
 
 			<div className="space-y-6">
+
+				{/* Verification Section */}
+				<div className="bg-[#1c1c1e] rounded-[24px] p-5 space-y-4">
+					<div className="flex justify-between items-start">
+						<h2 className="text-xs uppercase tracking-widest text-gray-500 font-semibold">Верификация</h2>
+						{verification?.verificationStatus && (
+							<span className={`text-xs font-bold px-2 py-1 rounded bg-white/5 
+								${verification.verificationStatus === 'VERIFIED' ? 'text-[#ccf333]' :
+									verification.verificationStatus === 'REJECTED' ? 'text-red-500' :
+										verification.verificationStatus === 'PENDING' ? 'text-orange-400' : 'text-gray-400'}`}>
+								{verification.verificationStatus === 'VERIFIED' ? 'Подтвержден' :
+									verification.verificationStatus === 'REJECTED' ? 'Отклонен' :
+										verification.verificationStatus === 'PENDING' ? 'На проверке' : 'Не подтвержден'}
+							</span>
+						)}
+					</div>
+
+					{verification?.verificationStatus === 'REJECTED' && verification.rejectionReason && (
+						<div className="bg-red-900/20 p-3 rounded-xl border border-red-900/50">
+							<p className="text-red-400 text-sm">Причина отклонения: {verification.rejectionReason}</p>
+						</div>
+					)}
+
+					{verification?.verificationStatus === 'VERIFIED' ? (
+						<p className="text-sm text-gray-400">Ваш профиль подтвержден. Вы можете принимать заказы.</p>
+					) : (
+						<div className="space-y-3">
+							<div className="flex justify-between items-center text-sm">
+								<span className="text-gray-400">Загружено документов:</span>
+								<span className="text-white font-medium">{verification?.documentsCount ?? 0} / 2</span>
+							</div>
+
+							<button
+								onClick={() => setUploadModalOpen(true)}
+								disabled={verification?.verificationStatus === 'PENDING'}
+								className="btn btn-outline w-full rounded-full border-gray-600 text-white hover:bg-white hover:text-black hover:border-white disabled:opacity-50"
+							>
+								{verification?.verificationStatus === 'PENDING' ? 'Ожидайте проверки' : 'Загрузить документы'}
+							</button>
+
+							{(verification?.documentsCount ?? 0) >= 2 && verification?.verificationStatus !== 'PENDING' && (
+								<button
+									onClick={() => submitVerificationMutation.mutate()}
+									disabled={submitVerificationMutation.isPending}
+									className="btn w-full rounded-full bg-[#ccf333] hover:bg-[#b0d42b] text-black border-none font-bold"
+								>
+									{submitVerificationMutation.isPending ? <span className="loading loading-spinner" /> : 'Отправить на проверку'}
+								</button>
+							)}
+						</div>
+					)}
+				</div>
 
 				{/* Section: Personal Info */}
 				<div className="space-y-4">
@@ -261,6 +336,10 @@ export default function ProfileSetupClient() {
 				</div>
 
 			</div>
+			<VerificationUploadModal
+				isOpen={isUploadModalOpen}
+				onClose={() => setUploadModalOpen(false)}
+			/>
 		</div>
 	);
 }

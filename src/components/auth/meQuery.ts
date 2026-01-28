@@ -16,6 +16,12 @@ export type ProfileDto = {
 	status: string | null;
 	districts: Named[];
 	specialties: Named[];
+	finance: {
+		debt: number;
+		debtLimit: number;
+		usagePercent: number;
+		statusColor: 'red' | 'orange' | 'green';
+	};
 };
 
 export type MeResponse = {

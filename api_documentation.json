@@ -1,0 +1,287 @@
+{
+	"overview": "Public API endpoints for Profile, Finance, Payments and Verification modules. All endpoints require JWT authentication unless specified otherwise.",
+	"endpoints": [
+		{
+			"module": "Profile & Finance",
+			"endpoints": [
+				{
+					"method": "GET",
+					"url": "/users/me",
+					"auth": "JWT required",
+					"description": "Returns current user profile with finance data",
+					"response": {
+						"type": "SafeUserObject",
+						"fields": {
+							"profile": {
+								"finance": {
+									"debt": "number - calculated debt amount",
+									"debtLimit": "number - maximum allowed debt",
+									"usagePercent": "number - debt/debtLimit * 100",
+									"statusColor": "string - 'red' (≥100%), 'orange' (≥80%), 'green' (<80%)"
+								}
+							}
+						}
+					},
+					"source": "users.controller.ts:24, users.service.ts:86,117"
+				},
+				{
+					"method": "GET",
+					"url": "/users/balance",
+					"auth": "JWT required, ACTIVE master only",
+					"description": "Returns master balance and payout history",
+					"response": {
+						"type": "BalanceResponseDto",
+						"fields": {
+							"balance": "number - current balance",
+							"payoutPercent": "number - payout percentage",
+							"payouts": "array - list of recent payout objects"
+						}
+					},
+					"source": "users.controller.ts:30, users.service.ts:407, balance-response.dto.ts:3"
+				},
+				{
+					"method": "POST",
+					"url": "/users/profile",
+					"auth": "JWT required",
+					"description": "Create master profile",
+					"body": {
+						"type": "CreateProfileDto",
+						"fields": {
+							"firstName": "string - required, 2-50 chars",
+							"lastName": "string - required, 2-50 chars",
+							"patronymic": "string - optional",
+							"phone": "string - required, format: +7900...",
+							"districtIds": "number[] - required, minimum 1 element",
+							"specialtyIds": "number[] - required, minimum 1 element"
+						}
+					},
+					"response": {
+						"type": "Profile with districts and specialties"
+					},
+					"source": "users.controller.ts:36, create-profile.dto.ts:18,22,25,31,37"
+				},
+				{
+					"method": "PUT",
+					"url": "/users/profile",
+					"auth": "JWT required",
+					"description": "Update master profile",
+					"body": {
+						"type": "UpdateProfileDto",
+						"note": "All fields from CreateProfileDto are optional (partial)",
+						"fields": {
+							"firstName": "string - optional, 2-50 chars",
+							"lastName": "string - optional, 2-50 chars",
+							"patronymic": "string - optional",
+							"phone": "string - optional, format: +7900...",
+							"districtIds": "number[] - optional, minimum 1 element if provided",
+							"specialtyIds": "number[] - optional, minimum 1 element if provided"
+						}
+					},
+					"response": {
+						"type": "Updated profile with districts and specialties"
+					},
+					"source": "users.controller.ts:45, update-profile.dto.ts:4"
+				}
+			]
+		},
+		{
+			"module": "Payments & Debt",
+			"endpoints": [
+				{
+					"method": "POST",
+					"url": "/integrations/yookassa/create-payment",
+					"auth": "JWT required",
+					"description": "Create YooKassa payment for debt repayment",
+					"validation": [
+						"Master must have email for receipt",
+						"Returns 400 if email missing"
+					],
+					"body": {
+						"type": "CreatePaymentDto",
+						"fields": {
+							"amount": "number - required, positive only"
+						}
+					},
+					"response": {
+						"fields": {
+							"paymentUrl": "string - redirect URL for payment",
+							"paymentId": "string - YooKassa payment ID"
+						}
+					},
+					"source": "yookassa.controller.ts:11, yookassa.service.ts:51,97,108, create-payment.dto.ts:4"
+				},
+				{
+					"method": "POST",
+					"url": "/integrations/yookassa/webhook",
+					"auth": "Public webhook endpoint",
+					"description": "YooKassa webhook handler for payment events",
+					"logic": [
+						"Only processes 'payment.succeeded' events",
+						"Validates metadata contains masterId (METADATA_TYPE)",
+						"Calls PayoutsService.repayDebt",
+						"Idempotent: checks for existing TransactionType.DEBT_PAYMENT with externalPaymentId",
+						"Reduces debt (min 0)",
+						"Updates isBlockedByDebt flag based on debtLimit"
+					],
+					"source": "yookassa.controller.ts:20, yookassa.service.ts:123,128, payouts.service.ts:473,496,531,541"
+				}
+			]
+		},
+		{
+			"module": "Verification",
+			"endpoints": [
+				{
+					"method": "POST",
+					"url": "/verification/upload",
+					"auth": "JWT required, MASTER role",
+					"description": "Upload verification document (passport/ID)",
+					"contentType": "multipart/form-data",
+					"body": {
+						"file": "file - required, field name must be 'file'"
+					},
+					"validation": [
+						"File must be present",
+						"Profile must not be in VERIFIED status"
+					],
+					"response": {
+						"fields": {
+							"masterId": "number",
+							"url": "string - S3 URL of uploaded document",
+							"documentsCount": "number - total documents uploaded",
+							"verificationStatus": "string - current status"
+						}
+					},
+					"source": "verification.controller.ts:27, verification.service.ts:70,77,98"
+				},
+				{
+					"method": "POST",
+					"url": "/verification/submit",
+					"auth": "JWT required, MASTER role",
+					"description": "Submit verification for review (changes status to PENDING)",
+					"validation": [
+						"Minimum 2 documents must be uploaded",
+						"Cannot submit if already PENDING or VERIFIED"
+					],
+					"response": {
+						"fields": {
+							"verificationStatus": "string - updated to PENDING",
+							"documentsCount": "number"
+						}
+					},
+					"source": "verification.controller.ts:38, verification.service.ts:103,107,113"
+				},
+				{
+					"method": "GET",
+					"url": "/verification/status",
+					"auth": "JWT required, MASTER role",
+					"description": "Get current verification status",
+					"response": {
+						"fields": {
+							"verificationStatus": "string - NOT_VERIFIED | PENDING | VERIFIED | REJECTED",
+							"rejectionReason": "string | null - reason if rejected",
+							"documentsCount": "number - total uploaded documents"
+						}
+					},
+					"source": "verification.controller.ts:45, verification.service.ts:137,142"
+				},
+				{
+					"method": "PATCH",
+					"url": "/verification/review/:masterId",
+					"auth": "JWT required, ADMIN role only",
+					"description": "Admin endpoint to approve/reject verification",
+					"params": {
+						"masterId": "number - master ID in URL path"
+					},
+					"body": {
+						"type": "ReviewMasterDto",
+						"fields": {
+							"status": "string - required, must be 'VERIFIED' or 'REJECTED'",
+							"rejectionReason": "string - required if REJECTED, forbidden if VERIFIED"
+						}
+					},
+					"logic": [
+						"Sets verificationStatus on profile",
+						"Clears rejectionReason if VERIFIED",
+						"Activates master if VERIFIED",
+						"Sets master to PENDING status if REJECTED"
+					],
+					"source": "verification.controller.ts:52, review-master.dto.ts:11,20, verification.service.ts:150,159,167,176,192"
+				}
+			]
+		}
+	],
+	"implementation_guide": {
+		"progress_bar_finance": {
+			"description": "Display debt progress bar and payout history",
+			"steps": [
+				"Call GET /users/me to get profile.finance data",
+				"Call GET /users/balance to get balance and payouts array",
+				"Display debt/debtLimit ratio as percentage",
+				"Color progress bar based on statusColor (red/orange/green)",
+				"Show recent payouts list below progress bar"
+			]
+		},
+		"profile_form": {
+			"description": "Profile creation/update form",
+			"steps": [
+				"Create form with fields: firstName, lastName, patronymic (optional), phone",
+				"Add multi-select for districtIds (minimum 1 required)",
+				"Add multi-select for specialtyIds (minimum 1 required)",
+				"On submit: POST /users/profile for new profile",
+				"For updates: PUT /users/profile with changed fields only",
+				"Validate phone format +7900... on frontend",
+				"Validate firstName/lastName 2-50 characters"
+			]
+		},
+		"verification_flow": {
+			"description": "Document upload and verification submission flow",
+			"steps": [
+				"Create file upload form with multipart/form-data",
+				"On file select: POST /verification/upload with FormData containing 'file' field",
+				"Display uploaded document count from response",
+				"Show current verificationStatus",
+				"Enable 'Submit for Review' button when documentsCount >= 2",
+				"On submit: POST /verification/submit",
+				"Poll GET /verification/status to show current status",
+				"Display rejectionReason if status is REJECTED",
+				"Allow re-upload if rejected (status changes back to NOT_VERIFIED after admin review)"
+			]
+		}
+	},
+	"validation_rules": {
+		"profile": {
+			"firstName": "2-50 characters, required",
+			"lastName": "2-50 characters, required",
+			"patronymic": "optional",
+			"phone": "format: +7900..., required",
+			"districtIds": "array with minimum 1 element, required",
+			"specialtyIds": "array with minimum 1 element, required"
+		},
+		"payment": {
+			"amount": "positive number, required"
+		},
+		"verification": {
+			"minimumDocuments": 2,
+			"cannotUploadIfVerified": "Yes",
+			"cannotSubmitIfPendingOrVerified": "Yes"
+		}
+	},
+	"status_enums": {
+		"verificationStatus": [
+			"NOT_VERIFIED",
+			"PENDING",
+			"VERIFIED",
+			"REJECTED"
+		],
+		"statusColor": [
+			"red",
+			"orange",
+			"green"
+		],
+		"masterStatus": [
+			"ACTIVE",
+			"PENDING",
+			"BLOCKED"
+		]
+	}
+}
