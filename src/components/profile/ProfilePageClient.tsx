@@ -38,7 +38,10 @@ export default function ProfilePageClient() {
 	// 1. Получаем сырую строку инициализации
 	const rawInitData = useRawInitData();
 
-	const { data: me, isLoading, isFetching, error } = useMeQuery();
+	const { data: me, isLoading, isFetching, error } = useMeQuery({
+		staleTime: 0,
+		refetchOnMount: 'always',
+	});
 	const [toast, setToast] = useState<string | null>(null);
 
 	const showToast = useCallback((msg: string) => {
@@ -103,11 +106,15 @@ export default function ProfilePageClient() {
 	}
 
 	if (error) {
+		// Приводим к any или unknown, чтобы сбросить строгое сужение типов TypeScript,
+		// которое вызывает ошибку "never"
+		const err = error as unknown;
+
 		const message =
-			error instanceof ApiError
-				? error.message
-				: error instanceof Error
-					? error.message
+			err instanceof ApiError
+				? err.message
+				: err instanceof Error
+					? err.message
 					: 'Failed to load profile';
 
 		return (
@@ -125,6 +132,7 @@ export default function ProfilePageClient() {
 			</div>
 		);
 	}
+
 
 	// if (!me || needsSetup) {
 	// 	return <TopProgressBar className="fixed left-0 right-0 top-0 z-50 bg-[#ccf333]" />;

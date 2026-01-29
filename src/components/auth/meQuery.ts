@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, type QueryClient } from '@tanstack/react-query';
+import { useQuery, type QueryClient, type UseQueryOptions } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/apiClient';
 import { loginWithInitData } from '@/lib/authApi';
 import { tokenStorage } from '@/lib/tokenStorage';
@@ -115,7 +115,9 @@ export async function bootstrapMe(initData: string, queryClient: QueryClient): P
 	}
 }
 
-export function useMeQuery() {
+type UseMeQueryOptions = Omit<UseQueryOptions<MeResponse, ApiError>, 'queryKey' | 'queryFn'>;
+
+export function useMeQuery(options?: UseMeQueryOptions) {
 	return useQuery({
 		queryKey: meQueryKey,
 		queryFn: fetchMe,
@@ -123,5 +125,6 @@ export function useMeQuery() {
 		gcTime: 30 * 60 * 1000,
 		refetchOnWindowFocus: false,
 		refetchOnReconnect: false,
+		...options,
 	});
 }
