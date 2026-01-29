@@ -10,13 +10,13 @@ import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { ApiError } from '@/lib/apiClient';
 import { acceptOrder, advanceOrderStatus, getOrderById, submitOrderReview, type OrderDto } from '@/lib/ordersApi';
 import { OrderDetailsSkeleton } from '@/components/orders/OrderDetailsSkeleton';
-import { STATUS_LABELS, type UiOrderStatus } from '@/components/orders/OrderDetails/orderStatus';
-import { OrderMainCard } from '@/components/orders/OrderDetails/OrderMainCard';
-import { OrderProgressCard } from '@/components/orders/OrderDetails/OrderProgressCard';
-import { OrderClientCard } from '@/components/orders/OrderDetails/OrderClientCard';
-import { OrderActionButton } from '@/components/orders/OrderDetails/OrderActionButton';
-import { OrderReviewModal } from '@/components/orders/OrderDetails/OrderReviewModal';
-import { AppToast } from '@/components/orders/OrderDetails/AppToast';
+import { STATUS_LABELS, type UiOrderStatus } from '@/components/orders/OrderDetailsComponent/orderStatus';
+import { OrderMainCard } from '@/components/orders/OrderDetailsComponent/OrderMainCard';
+import { OrderProgressCard } from '@/components/orders/OrderDetailsComponent/OrderProgressCard';
+import { OrderClientCard } from '@/components/orders/OrderDetailsComponent/OrderClientCard';
+import { OrderActionButton } from '@/components/orders/OrderDetailsComponent/OrderActionButton';
+import { OrderReviewModal } from '@/components/orders/OrderDetailsComponent/OrderReviewModal';
+import { AppToast } from '@/components/orders/OrderDetailsComponent/AppToast';
 
 // --- Helpers ---
 
