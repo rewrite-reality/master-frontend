@@ -17,6 +17,7 @@ import { ProfileSpecialtiesCard } from './ProfileComponent/ProfileSpecialtiesCar
 import { ProfileStatsGrid } from './ProfileComponent/ProfileStatsGrid';
 import { ProfileToast } from './ProfileComponent/ProfileToast';
 import { formatPhonePretty, initials } from './ProfileComponent/profileUtils';
+import { VerificationStatusCard } from './VerificationStatusCard';
 
 // --- API ---
 
@@ -212,6 +213,7 @@ export default function ProfilePageClient() {
 			<ProfileFinanceSection finance={profile?.finance ?? null} />
 
 			<div className="px-4 space-y-4">
+				<VerificationStatusCard />
 				<ProfileSpecialtiesCard specialties={specialties} />
 				<ProfileDetailsCard
 					phonePretty={phonePretty}

@@ -53,7 +53,8 @@ export default function ProfileSetupClient() {
 		queryKey: ['verification', 'status'],
 		queryFn: getVerificationStatus,
 		retry: false,
-		staleTime: 10 * 1000,
+		staleTime: 0,
+		refetchOnWindowFocus: true,
 	});
 
 	const submitVerificationMutation = useMutation({
@@ -102,8 +103,13 @@ export default function ProfileSetupClient() {
 		const ph = phoneE164.length > 0;
 		const dOk = districtIds.length >= 1;
 		const sOk = specialtyIds.length >= 1;
-		return ln && fn && pn && ph && dOk && sOk && !loading && !submitting;
-	}, [lastName, firstName, patronymic, phoneE164, districtIds, specialtyIds, loading, submitting]);
+
+		const status = verification?.verificationStatus;
+		const isVerifiedOrPending = status === 'PENDING' || status === 'VERIFIED';
+		const docsOk = (verification?.documentsCount ?? 0) >= 2 && isVerifiedOrPending;
+
+		return ln && fn && pn && ph && dOk && sOk && docsOk && !loading && !submitting;
+	}, [lastName, firstName, patronymic, phoneE164, districtIds, specialtyIds, loading, submitting, verification]);
 
 	const handleSubmit = useCallback(async () => {
 		if (!isValid) return;

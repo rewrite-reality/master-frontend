@@ -97,5 +97,19 @@ export function AuthGateClient({ children }: { children: ReactNode }) {
 	// 	return <TopProgressBar className="fixed left-0 right-0 top-0 z-50" />;
 	// }
 
+	// Check if we need to redirect
+	const shouldRedirect = ready && needsSetup != null && (
+		(needsSetup && pathname !== '/profile/setup') ||
+		(!needsSetup && pathname === '/profile/setup')
+	);
+
+	if (!ready || shouldRedirect) {
+		return (
+			<div className="min-h-screen flex items-center justify-center bg-[#161616]">
+				{/* <span className="loading loading-spinner loading-lg text-primary"></span> */}
+			</div>
+		);
+	}
+
 	return <>{children}</>;
 }
