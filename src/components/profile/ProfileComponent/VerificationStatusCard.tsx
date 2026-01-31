@@ -1,12 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { getVerificationStatus } from '@/lib/verificationApi';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getVerificationStatus, submitVerification } from '@/lib/verificationApi';
 import { VerificationUploadModal } from '../ProfileSetupComponent/VerificationUploadModal';
 
 export function VerificationStatusCard() {
 	const [isUploadModalOpen, setUploadModalOpen] = useState(false);
+	const queryClient = useQueryClient();
+
+	const submitMutation = useMutation({
+		mutationFn: submitVerification,
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['verification', 'status'] });
+		},
+	});
 
 	const { data: verification, isLoading } = useQuery({
 		queryKey: ['verification', 'status'],
@@ -35,14 +43,12 @@ export function VerificationStatusCard() {
 	const isVerified = status === 'VERIFIED';
 	const isRejected = status === 'REJECTED';
 	const isPending = status === 'PENDING';
+	const isNone = !status || status === 'NONE';
 
 	// If verified, we might want to show a small green badge or nothing at all depending on design.
 	// But per requirements: "Зелёную карточку "Подтверждено" если status === 'VERIFIED'"
 
-	if (!status && docsCount === 0) {
-		// No verification info yet or clean state
-		return null;
-	}
+
 
 	return (
 		<>
@@ -67,7 +73,7 @@ export function VerificationStatusCard() {
 							<span className="text-[10px] font-bold text-red-500 uppercase tracking-wider">Отклонено</span>
 						</div>
 					)}
-					{!status && (
+					{isNone && (
 						<div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-500/10 border border-gray-500/20">
 							<span className="w-1.5 h-1.5 rounded-full bg-gray-500" />
 							<span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ожидает</span>
@@ -89,6 +95,27 @@ export function VerificationStatusCard() {
 							/>
 						</div>
 					</div>
+
+					{isNone && (
+						<div className="space-y-3">
+							<button
+								onClick={() => setUploadModalOpen(true)}
+								className="w-full h-10 rounded-xl bg-[#ccf333]/10 hover:bg-[#ccf333]/20 text-[#ccf333] text-sm font-medium transition-colors border border-[#ccf333]/20"
+							>
+								Загрузить документы
+							</button>
+
+							{docsCount >= 2 && (
+								<button
+									onClick={() => submitMutation.mutate()}
+									disabled={submitMutation.isPending}
+									className="w-full h-10 rounded-xl bg-[#ccf333] hover:bg-[#bbe02f] text-black text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+								>
+									{submitMutation.isPending ? 'Отправка...' : 'Отправить на проверку'}
+								</button>
+							)}
+						</div>
+					)}
 
 					{/* Rejected Content */}
 					{isRejected && (

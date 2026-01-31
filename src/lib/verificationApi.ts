@@ -1,6 +1,6 @@
 import { api } from './apiClient';
 
-export type VerificationStatus = 'NOT_VERIFIED' | 'PENDING' | 'VERIFIED' | 'REJECTED';
+export type VerificationStatus = 'NOT_VERIFIED' | 'PENDING' | 'VERIFIED' | 'REJECTED' | 'NONE';
 
 export type VerificationStatusResponse = {
 	verificationStatus: VerificationStatus;
