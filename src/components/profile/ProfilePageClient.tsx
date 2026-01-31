@@ -17,7 +17,7 @@ import { ProfileSpecialtiesCard } from './ProfileComponent/ProfileSpecialtiesCar
 import { ProfileStatsGrid } from './ProfileComponent/ProfileStatsGrid';
 import { ProfileToast } from './ProfileComponent/ProfileToast';
 import { formatPhonePretty, initials } from './ProfileComponent/profileUtils';
-import { VerificationStatusCard } from './VerificationStatusCard';
+import { VerificationStatusCard } from './ProfileComponent/VerificationStatusCard';
 
 // --- API ---
 

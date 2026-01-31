@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getVerificationStatus } from '@/lib/verificationApi';
-import { VerificationUploadModal } from './ProfileSetupComponent/VerificationUploadModal';
+import { VerificationUploadModal } from '../ProfileSetupComponent/VerificationUploadModal';
 
 export function VerificationStatusCard() {
 	const [isUploadModalOpen, setUploadModalOpen] = useState(false);
