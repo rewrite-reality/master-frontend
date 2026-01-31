@@ -2,7 +2,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
@@ -48,10 +48,38 @@ export default function OrderDetailsPageClient() {
 	const [isReviewModalOpen, setReviewModalOpen] = useState(false);
 	const [reviewResetKey, setReviewResetKey] = useState(0);
 
+	// Ref for navigation fallback
+	const navTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+	// Cleanup navigation timer on unmount
+	useEffect(() => {
+		return () => {
+			if (navTimeoutRef.current) {
+				clearTimeout(navTimeoutRef.current);
+			}
+		};
+	}, []);
+
 	const showToast = useCallback((msg: string) => {
 		setToast(msg);
-		window.setTimeout(() => setToast(null), 2000);
+		window.setTimeout(() => setToast(null), 3000);
 	}, []);
+
+	// --- Custom Back Handler ---
+	const handleBack = useCallback(() => {
+		// Пытаемся вернуться назад
+		router.back();
+
+		// Если история пуста (или мы открыли ссылку напрямую), router.back() может ничего не сделать
+		// Ставим тайм-аут: если через 300мс мы всё ещё здесь — форсируем переход в список
+		if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+
+		navTimeoutRef.current = setTimeout(() => {
+			// Проверка safety: если компонент размонтирован, этот колбэк не должен навредить,
+			// но router.push всё равно сработает.
+			router.push('/orders');
+		}, 300);
+	}, [router]);
 
 	// --- Queries ---
 
@@ -98,15 +126,45 @@ export default function OrderDetailsPageClient() {
 	const acceptMutation = useMutation({
 		mutationFn: () => acceptOrder(id!),
 		onSuccess: () => {
-			showToast('Заказ принят!');
+			showToast('Заказ успешно принят!');
 			queryClient.invalidateQueries({ queryKey: ['orders', id] });
 		},
-		onError: (e: unknown) => {
+		onError: async (e: unknown) => {
+			// Инвалидируем в любом случае, чтобы получить актуальный статус
+			queryClient.invalidateQueries({ queryKey: ['orders', id] });
+
 			if (e instanceof ApiError && e.status === 409) {
-				showToast('Упс. Заказ уже занят.');
-				router.replace('/orders');
-				return;
+				// Логика обработки 409
+				try {
+					// Пробуем получить актуальную версию заказа прямо сейчас
+					const freshOrder = await queryClient.fetchQuery({
+						queryKey: ['orders', id],
+						queryFn: () => getOrderById(id!),
+						staleTime: 0
+					});
+
+					// Если мы видим телефон клиента, значит заказ НАШ (мы уже его взяли ранее)
+					if (freshOrder?.clientPhone) {
+						showToast('Вы уже приняли этот заказ. Обновляем данные...');
+						return; // Остаёмся на странице
+					} else {
+						// Если телефона нет, значит заказ взял кто-то другой
+						showToast('Заказ уже забрал другой исполнитель');
+						// Ждём чуть-чуть, чтобы юзер прочитал тост, и уводим
+						setTimeout(() => {
+							router.replace('/orders');
+						}, 2000);
+						return;
+					}
+				} catch (fetchErr) {
+					// Если не удалось загрузить, просто редиректим
+					showToast('Заказ недоступен');
+					router.replace('/orders');
+					return;
+				}
 			}
+
+			// Стандартная обработка остальных ошибок
 			const msg = e instanceof ApiError ? (e.message || `Ошибка ${e.status}`) : 'Ошибка принятия заказа';
 			showToast(msg);
 		}
@@ -126,7 +184,7 @@ export default function OrderDetailsPageClient() {
 						...previousOrder,
 						status: optimisticNext,
 					});
-					showToast(`Статус: ${STATUS_LABELS[optimisticNext] ?? optimisticNext}`);
+					showToast(`Статус изменен: ${STATUS_LABELS[optimisticNext] ?? optimisticNext}`);
 				}
 			}
 			return { previousOrder };
@@ -137,17 +195,17 @@ export default function OrderDetailsPageClient() {
 			}
 			if (e instanceof ApiError) {
 				if (e.status === 409) {
-					showToast('Статус уже изменился. Данные обновлены.');
+					showToast('Статус уже был изменен другим устройством. Данные обновлены.');
 					return;
 				}
 				if (e.status === 403) {
-					showToast('Нет доступа.');
+					showToast('У вас нет прав на это действие.');
 					return;
 				}
 				showToast(e.message || `Ошибка ${e.status}`);
 				return;
 			}
-			showToast('Не удалось изменить статус');
+			showToast('Не удалось изменить статус. Попробуйте снова.');
 		},
 		onSettled: () => {
 			queryClient.invalidateQueries({ queryKey: ['orders', id] });
@@ -158,7 +216,7 @@ export default function OrderDetailsPageClient() {
 	const reviewMutation = useMutation({
 		mutationFn: (files: File[]) => submitOrderReview(id!, files),
 		onSuccess: () => {
-			showToast('Работа принята на проверку!');
+			showToast('Отчет отправлен на проверку!');
 			setReviewModalOpen(false);
 			setReviewResetKey((prev) => prev + 1);
 			queryClient.invalidateQueries({ queryKey: ['orders', id] });
@@ -228,7 +286,7 @@ export default function OrderDetailsPageClient() {
 			<div className="px-4 pt-4 pb-2 flex items-center gap-4">
 				<button
 					className="w-10 h-10 rounded-full bg-[#1c1c1e] flex items-center justify-center text-white hover:bg-[#2c2c2e] transition-colors"
-					onClick={() => router.back()}
+					onClick={handleBack}
 				>
 					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
 						<path d="M19 12H5M12 19l-7-7 7-7" />
